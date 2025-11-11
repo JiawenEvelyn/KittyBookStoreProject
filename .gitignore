@@ -15,6 +15,7 @@ target/
 
 ### IntelliJ IDEA ###
 .idea
+.vscode/
 *.iws
 *.iml
 *.ipr
@@ -31,3 +32,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### JAVA ###
+*.class
+*.jar
+*.war
+*.log
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### SQL ###
+*.sql
