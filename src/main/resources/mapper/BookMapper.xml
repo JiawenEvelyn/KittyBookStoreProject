@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.book.store.mapper.BookMapper">
+
+    <!-- 查询书籍信息 -->
+    <select id="query"  resultType="com.book.store.entity.Book">
+        SELECT *
+        FROM tbl_book
+    </select>
+
+    <!-- 插入书籍信息 -->
+    <insert id="insert" parameterType="com.book.store.entity.Book">
+        INSERT INTO tbl_book VALUES(#{uuid}, #{name},
+        #{type}, #{author}, #{nationality}, #{press}, #{stockQuantity}, #{introduction})
+    </insert>
+</mapper>

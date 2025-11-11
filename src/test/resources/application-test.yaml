@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:kittybookstoretestdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql  # 使用已有的建表脚本
+  h2:
+    console:
+      enabled: true        # 开启 H2 控制台
+      path: /h2-console    # 访问路径
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
