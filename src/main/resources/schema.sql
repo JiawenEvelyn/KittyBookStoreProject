@@ -16,14 +16,13 @@ CREATE TABLE IF NOT EXISTS tbl_author (
 );
 
 CREATE TABLE IF NOT EXISTS tbl_user (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(36) NOT NULL,
-    email VARCHAR(36) NOT NULL,
-    phone VARCHAR(36) NOT NULL,
-    password VARCHAR(12) NOT NULL,
-    nationality VARCHAR(12) NOT NULL,
-    birthday VARCHAR(36) NOT NULL,
-    create_at VARCHAR(36) NOT NULL
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(36) NOT NULL UNIQUE,
+    email VARCHAR(50) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    password VARCHAR(100) NOT NULL,
+    nationality VARCHAR(48) NOT NULL,
+    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS tbl_rel_userbook (
