@@ -12,7 +12,7 @@
 
     <!-- 插入书籍信息 -->
     <insert id="insert" parameterType="com.book.store.entity.Book">
-        INSERT INTO tbl_book VALUES(#{uuid}, #{name},
-        #{type}, #{author}, #{nationality}, #{press}, #{stockQuantity}, #{introduction})
+        INSERT INTO tbl_book (id, name, category, author_id, press, introduction)
+        VALUES (#{id}, #{name}, #{category}, #{authorId}, #{press}, #{introduction})
     </insert>
 </mapper>

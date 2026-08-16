@@ -33,7 +33,7 @@ public class UserController {
     * 查询用户
     * */
     @GetMapping("/{id}")
-    public User queryUser(@PathVariable Long id) {
+    public User queryUser(@PathVariable String id) {
         return userService.queryUserById(id);
     }
 }

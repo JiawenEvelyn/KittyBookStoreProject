@@ -5,6 +5,8 @@ import com.book.store.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Service
 public class UserService {
 
@@ -19,7 +21,7 @@ public class UserService {
         if (exist != null) {
             return false;
         }
-
+        user.setId(UUID.randomUUID().toString());
         userMapper.insert(user);
         return true;
     }
@@ -38,7 +40,7 @@ public class UserService {
     /**
      * 查询用户
      */
-    public User queryUserById(Long id) {
+    public User queryUserById(String id) {
         return userMapper.queryById(id);
     }
 }

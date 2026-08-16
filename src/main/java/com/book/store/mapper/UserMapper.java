@@ -8,8 +8,8 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface UserMapper {
     @Insert("""
-            INSERT INTO tbl_user(name, email, phone, password, nationality)
-             VALUES(#{name}, #{email}, #{phone}, #{password}, #{nationality})
+            INSERT INTO tbl_user (id, name, email, phone, password, nationality)
+             VALUES(#{id}, #{name}, #{email}, #{phone}, #{password}, #{nationality})
             """)
     void insert(User user);
 
@@ -17,5 +17,5 @@ public interface UserMapper {
     User queryByName(String name);
 
     @Select("SELECT * FROM tbl_user WHERE id = #{id}")
-    User queryById(Long id);
+    User queryById(String id);
 }

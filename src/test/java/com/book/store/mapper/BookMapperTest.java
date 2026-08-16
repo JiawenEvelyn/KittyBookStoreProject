@@ -23,18 +23,16 @@ public class BookMapperTest {
     @Test
     void testInsertAndQuery() throws InterruptedException {
         Book book = new Book();
-        book.setUuid(UUID.randomUUID().toString());
+        book.setId(UUID.randomUUID().toString());
         book.setName("Test Book");
-        book.setType("Fiction");
-        book.setAuthor("Jiawen");
-        book.setNationality("CN");
+        book.setCategory("Fiction");
+        book.setAuthorId(UUID.randomUUID().toString());
         book.setPress("Test Press");
-        book.setStockQuantity(10);
 
         bookMapper.insert(book);
 
         List<Book> books = bookMapper.query();
         assertFalse(books.isEmpty());
-        System.out.println("Books in H2: " + books);
+        System.out.println("Books in H2: count: " + books.size() + " info: {}" + books);
     }
 }

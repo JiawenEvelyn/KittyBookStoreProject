@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS tbl_book (
     category VARCHAR(12) NOT NULL,
     author_id VARCHAR(36) NOT NULL,
     press VARCHAR(50) NOT NULL,
-    stock_quantity INTEGER NOT NULL DEFAULT 0,
     introduction VARCHAR(200)
 );
 
@@ -16,7 +15,7 @@ CREATE TABLE IF NOT EXISTS tbl_author (
 );
 
 CREATE TABLE IF NOT EXISTS tbl_user (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id VARCHAR(36) PRIMARY KEY,
     name VARCHAR(36) NOT NULL UNIQUE,
     email VARCHAR(50) NOT NULL,
     phone VARCHAR(50) NOT NULL,
