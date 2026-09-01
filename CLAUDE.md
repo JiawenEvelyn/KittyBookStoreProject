@@ -54,7 +54,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### M0 —— 收尾期（现在 ~ 2026 年 8 月底）｜雅思优先，低强度
 
-只做不需要动脑的机械活：包名规范化、删死代码（第 9 节 #4、#7）。**不引入任何新概念**，不开新模块。每周 1~2 小时即可。
+只做不需要动脑的机械活。**不引入任何新概念**，不开新模块。每周 1~2 小时即可。
+
+**✅ 2026-08-16 已完成**：包名规范化（`Controller`/`Service` → `controller`/`service`）、删死代码（`DatabaseInitializer.java`、启动类里两个调试用 `CommandLineRunner`）。3 个测试全部通过。**M0 的计划内容已做完**，8 月底前无必做项 —— 若作者主动想动手，可挑 M1 里最轻的一项预热，否则安心备考。
 
 ### M1 —— 书籍 + 作者模块与工程规范（2026 年 9~10 月）
 
@@ -113,7 +115,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **做什么**：微信读书同步、Docker 化、缓存、CI。
 
-**学什么**：**Docker + Docker Compose**（多服务编排，这时才有真实动机）、**Redis**（缓存书架、缓存一致性、用分布式锁防同步任务并发）、**GitHub Actions** CI、**Flyway** 数据库迁移（解决第 9 节 #6）、HTTP 客户端的重试与限流（呼应作者的网络协议强项）。
+**学什么**：**Docker + Docker Compose**（多服务编排，这时才有真实动机）、**Redis**（缓存书架、缓存一致性、用分布式锁防同步任务并发）、**GitHub Actions** CI、**Flyway** 数据库迁移（解决第 9 节 #5）、HTTP 客户端的重试与限流（呼应作者的网络协议强项）。
 
 ---
 
@@ -189,15 +191,12 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 
 ```
 com.book.store
-├── KittyBookStoreApplication   启动类；内含两个调试用 CommandLineRunner（可清理）
-├── DatabaseInitializer         整个文件已被注释掉的死代码
-├── Controller/                 HelloController、UserController
-├── Service/                    UserService
+├── KittyBookStoreApplication   启动类，只剩 main 方法
+├── controller/                 HelloController、UserController
+├── service/                    UserService
 ├── entity/                     User、Book（@Data 贫血模型，目前直接当 DTO 用）
 └── mapper/                     UserMapper、BookMapper
 ```
-
-> 包名 `Controller`/`Service` 首字母大写，不符合 Java 规范（应为小写）。属于 M0 的机械活。
 
 ### MyBatis 的两种写法并存
 
@@ -228,7 +227,7 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 设计得最好的一块，注意保持：生产跑 MySQL、测试跑 H2 内存库，**两者复用同一份 `schema.sql`**。测试类用 `@ActiveProfiles("test")` 切到 `application-test.yaml`。新增表时只改 `schema.sql` 一处，测试库自动跟上。
 
 - `BookMapperTest`：Mapper 层集成测试（H2）
-- `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #8）
+- `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #6）
 
 ## 8. 常用命令
 
@@ -272,13 +271,13 @@ curl http://localhost:8080/user/<uuid>   # id 是 UUID，且目前没有接口�
 1. **密码明文存储、明文比对**（`UserService.login`）→ **M2**（BCrypt）
 2. **登录后没有任何会话/令牌** —— 目前没有鉴权体系 → **M2**（先手写 JWT，再上 Spring Security）
 3. **缺 DTO/VO 分层与统一响应体 `Result<T>`** → **M1**。三个具体后果（2026-08-04 冒烟实测）：① `GET /user/{id}` 把 `password` 一起返回；② 查不到用户时返回 `200` + 空 body 而非 `404`，调用方无法区分"不存在"和"出错"；③ `register`/`login` 只返回中文字符串、**不返回新用户的 id**，而 id 是 UUID 无法猜测，导致 `GET /user/{id}` 实际上任何客户端都调不到。做前端（M3）前必须解决
-4. **包名 `Controller`/`Service` 首字母大写**，不符合 Java 命名规范 → **M0**
-5. **接口风格不一致** —— register 用 JSON body，login 用 form 参数 → **M1**
-6. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
-7. **死代码** —— `DatabaseInitializer.java` 整个被注释；启动类里 `SELECT 2` 那个 `CommandLineRunner` 是调试残留 → **M0**
-8. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
-9. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
-10. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
+4. **接口风格不一致** —— register 用 JSON body，login 用 form 参数 → **M1**
+5. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
+6. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
+7. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
+8. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
+
+> 2026-08-16 已修掉并从清单移除：原 #4 包名首字母大写（已改为 `controller`/`service`）、原 #7 死代码（`DatabaseInitializer.java` 已删，启动类两个 `CommandLineRunner` 已删）。其余各项编号已相应前移。
 
 ## 10. 文档维护约定（**每个会话都要遵守**）
 
