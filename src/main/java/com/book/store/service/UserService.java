@@ -1,4 +1,4 @@
-package com.book.store.Service;
+package com.book.store.service;
 
 import com.book.store.entity.User;
 import com.book.store.mapper.UserMapper;

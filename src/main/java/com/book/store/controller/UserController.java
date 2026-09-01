@@ -1,6 +1,6 @@
-package com.book.store.Controller;
+package com.book.store.controller;
 
-import com.book.store.Service.UserService;
+import com.book.store.service.UserService;
 import com.book.store.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
