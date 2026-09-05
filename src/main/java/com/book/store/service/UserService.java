@@ -1,6 +1,8 @@
 package com.book.store.service;
 
+import com.book.store.common.ErrorCode;
 import com.book.store.entity.User;
+import com.book.store.exception.BizException;
 import com.book.store.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,10 @@ public class UserService {
      * 查询用户
      */
     public User queryUserById(String id) {
-        return userMapper.queryById(id);
+        User userDb = userMapper.queryById(id);
+        if (userDb == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND);
+        }
+        return userDb;
     }
 }

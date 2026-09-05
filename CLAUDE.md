@@ -2,7 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**与本仓库所有者的沟通语言：中文。**
+**沟通与代码语言约定（2026-09-03 起生效）**
+
+作者要借项目保持英语应用能力，因此：
+
+| 对象 | 语言 |
+|---|---|
+| Claude 与作者的日常对话 | **English** |
+| 代码注释、类/方法/变量命名、日志文案 | **English** |
+| commit message、PR 描述 | **English** |
+| `ErrorCode` 的 message 等面向 API 的文案 | **English** |
+| `README.md`（作者的学习笔记） | 作者自便 |
+| 本文件 `CLAUDE.md` | 见下 |
+
+**例外：当作者用中文提问，或明确要求中文时，用中文回答。** 语言切换是为了练习，不是为了给理解设障碍 —— 遇到讲不清的新概念，Claude 应主动补一句中文注解，而不是硬撑英文。
+
+`CLAUDE.md` 采用**混合策略**：技术性章节（6~9 节：技术栈、架构、命令、问题清单）随代码演进逐步改写为英文；第 2、3 节（职业时间线、学习路线图）**保持中文** —— 那是作者的个人规划，表达精度优先于练习。
 
 ---
 
@@ -18,6 +33,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **世界阅读地图**：网页内置世界地图，把读过的书按**作者所属国家**标注在地图上，用书籍封面作为标记
 
 > 第 4 点是作者最看重的视觉效果。数据模型上要记得：`tbl_author.nationality` 是地图功能的数据基础，国籍属于 author 而非 book。
+
+**客户端形态（2026-09-02 确立）**：当前按 Web 网页开发，但**最终形态是移动客户端 App**。这不改变里程碑顺序，只增加一条贯穿始终的架构约束 —— 详见第 7 节"面向多端的架构约束"。核心是：后端永远只提供纯 JSON API，绝不做服务端渲染；鉴权用 JWT 而非 Session/Cookie；接口路径带版本号。
 
 **但这个项目真正的目的不是做出产品，而是当作者的教具 —— 见第 2、3 节。产品需求的取舍要服从学习目标。**
 
@@ -58,9 +75,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **✅ 2026-08-16 已完成**：包名规范化（`Controller`/`Service` → `controller`/`service`）、删死代码（`DatabaseInitializer.java`、启动类里两个调试用 `CommandLineRunner`）。3 个测试全部通过。**M0 的计划内容已做完**，8 月底前无必做项 —— 若作者主动想动手，可挑 M1 里最轻的一项预热，否则安心备考。
 
-### M1 —— 书籍 + 作者模块与工程规范（2026 年 9~10 月）
+### M1 —— 书籍 + 作者模块与工程规范（2026 年 9~10 月）｜**进行中**
 
 **做什么**：book / author 的完整三层；`tbl_rel_userbook`（读书状态、评分）；书摘 CRUD。
+
+**进度**：
+- **M1-1 工程规范骨架（2026-09-05 完成）✅**：新建 `common/Result<T>`、`common/ErrorCode`（枚举携带 code + message + HttpStatus 三元组）、`exception/BizException`、`exception/GlobalExceptionHandler`、`vo/UserVO`；`GET /user/{id}` 已改造为 `Result<UserVO>` + 抛 `BizException`。端到端验证通过（404/404/405/500 四条路径，成功与失败响应体均为 `Result` 形状）。
+
+  过程中踩过、值得记住的两个坑：① `handleBiz` 曾误用业务码 `1001` 当 HTTP 状态码，`ResponseEntity.status()` 抛 `IllegalArgumentException` → handler 自身失败 → Spring 记一条 **WARN** 后放弃、原异常继续上抛，表面症状是 500 且堆栈指向 `BizException`（症状），真凶只在 WARN 行（病因）。② 兜底 handler 用 `Exception.class` 过宽，会劫持 Spring 自己的框架异常（`NoResourceFoundException` 404、`HttpRequestMethodNotSupportedException` 405、将来的 `MethodArgumentNotValidException` 400），全部变成 500；收窄到 `RuntimeException.class` 后框架异常得以落到 Spring 默认处理，状态码恢复正确。
+
+  **已知残留（M1-2 处理）**：`HttpMessageNotReadableException`（客户端发来畸形 JSON）继承自 `RuntimeException`，会落进兜底 handler 返回 500，本应是 400。M1-2 加 Bean Validation 时要为 `MethodArgumentNotValidException` 写专门 handler，届时一并覆盖。
+- **M1-2 register / login 改造**：未开始。要解决接口风格不一致（第 9 节 #4）、register 返回新用户 id、引入 Bean Validation + DTO 入参。
+- **M1-3 起**：author / book 模块三层、MyBatis 关联映射、`@Transactional`、JUnit + Mockito。
 
 **学什么**：
 - Spring **IOC/DI 原理** —— 为什么 `@Autowired` 能工作；字段注入 vs 构造器注入（工业界为什么偏爱后者）
@@ -194,9 +220,18 @@ com.book.store
 ├── KittyBookStoreApplication   启动类，只剩 main 方法
 ├── controller/                 HelloController、UserController
 ├── service/                    UserService
-├── entity/                     User、Book（@Data 贫血模型，目前直接当 DTO 用）
-└── mapper/                     UserMapper、BookMapper
+├── entity/                     User、Book（@Data 贫血模型，只给 Mapper 用）
+├── mapper/                     UserMapper、BookMapper
+├── common/                     Result<T> 统一响应体、ErrorCode 错误码枚举
+├── exception/                  BizException、GlobalExceptionHandler
+└── vo/                         UserVO（出参，不含 password/phone）
 ```
+
+`dto/`（入参）尚未建立 —— register/login 还在直接收 `User` 实体，M1-2 补。
+
+**约定**：Service 返回 Entity，Controller 负责转 VO（`UserVO.from(user)` 静态工厂）。理由是 Service 之间会互相调用，只吐 VO 会让内部调用方拿不到完整数据。
+
+**错误处理链路**：Service 抛 `BizException(ErrorCode.XXX)` → `GlobalExceptionHandler` 接住 → HTTP 状态码取自 `ErrorCode.getHttpStatus()`，body 是 `Result.fail(errorCode)`。这是"混合式"响应协议（2026-09-01 决策）：**HTTP 状态码表达哪一类问题，body 的 code 表达具体哪个问题**。新增错误一律往 `ErrorCode` 枚举里加，它是全项目错误的唯一真相来源。
 
 ### MyBatis 的两种写法并存
 
@@ -221,6 +256,17 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 | `tbl_rel_userbook` | ❌ 无代码。用户与书的关系表：阅读状态、评分 |
 | `tbl_bookexcerpt` | ❌ 无代码。精彩书摘 |
 | `tbl_manager` | ❌ 无代码。管理员 |
+
+### 面向多端的架构约束（2026-09-02 确立）
+
+最终形态是移动 App，Web 只是第一个客户端。为此有四条硬约束，**任何阶段都不许违反**：
+
+1. **后端只出 JSON，绝不做服务端渲染。** 不引入 Thymeleaf / JSP 之类模板引擎。已经是这条路线，保持即可。
+2. **鉴权必须是 JWT，不能是 Session + Cookie。** Session 依赖 Cookie 与同源，移动端原生 App 没有 Cookie 容器。M2 的路线图本来就是 JWT，**这条已经天然满足** —— 但 M2 换 Spring Security 时要留意别退回默认的 Session 模式。
+3. **接口路径必须带版本号 `/api/v1/...`。** Web 前后端可以一起发版，App 不行 —— 用户不升级，老版本永远在调你的旧接口。**破坏性变更在 App 时代是致命的**，版本前缀是唯一的退路。当前路径还是 `/user/{id}`，**M1-2 顺手加上前缀**，成本近乎为零，越晚加越贵。
+4. **响应协议一旦定死就不能随意改。** `Result<T>` 的字段名、`ErrorCode` 里已发布的 code 数值，App 端会硬编码判断。加新 code 可以，改旧 code 的含义不行。
+
+不需要现在预留的（等真做 App 时再说）：推送、离线缓存、多分辨率图片。CORS 只有 Web 需要，App 不受同源策略约束，M3 配置时知道这点即可。
 
 ### 测试策略
 
@@ -270,7 +316,7 @@ curl http://localhost:8080/user/<uuid>   # id 是 UUID，且目前没有接口�
 
 1. **密码明文存储、明文比对**（`UserService.login`）→ **M2**（BCrypt）
 2. **登录后没有任何会话/令牌** —— 目前没有鉴权体系 → **M2**（先手写 JWT，再上 Spring Security）
-3. **缺 DTO/VO 分层与统一响应体 `Result<T>`** → **M1**。三个具体后果（2026-08-04 冒烟实测）：① `GET /user/{id}` 把 `password` 一起返回；② 查不到用户时返回 `200` + 空 body 而非 `404`，调用方无法区分"不存在"和"出错"；③ `register`/`login` 只返回中文字符串、**不返回新用户的 id**，而 id 是 UUID 无法猜测，导致 `GET /user/{id}` 实际上任何客户端都调不到。做前端（M3）前必须解决
+3. **缺 DTO/VO 分层与统一响应体 `Result<T>`** → **M1｜部分完成**。三个具体后果（2026-08-04 冒烟实测）：① `GET /user/{id}` 把 `password` 一起返回 —— **✅ 2026-09-02 已修**（`UserVO`）；② 查不到用户时返回 `200` + 空 body 而非 `404` —— **✅ 2026-09-05 已修**（`BizException` + `GlobalExceptionHandler`，实测返回 404 + `{"code":1001,...}`）；③ `register`/`login` 只返回中文字符串、**不返回新用户的 id**，而 id 是 UUID 无法猜测，导致 `GET /user/{id}` 实际上任何客户端都调不到 —— **❌ 未修**，M1-2 处理。做前端（M3）前必须全部解决
 4. **接口风格不一致** —— register 用 JSON body，login 用 form 参数 → **M1**
 5. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
 6. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）

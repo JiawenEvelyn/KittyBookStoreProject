@@ -1,7 +1,9 @@
 package com.book.store.controller;
 
+import com.book.store.common.Result;
 import com.book.store.service.UserService;
 import com.book.store.entity.User;
+import com.book.store.vo.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,7 +35,8 @@ public class UserController {
     * 查询用户
     * */
     @GetMapping("/{id}")
-    public User queryUser(@PathVariable String id) {
-        return userService.queryUserById(id);
+    public Result<UserVO> queryUser(@PathVariable String id) {
+        User userDb = userService.queryUserById(id);
+        return Result.ok(UserVO.from(userDb));
     }
 }
