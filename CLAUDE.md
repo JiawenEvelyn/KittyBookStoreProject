@@ -86,7 +86,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   过程中踩过、值得记住的两个坑：① `handleBiz` 曾误用业务码 `1001` 当 HTTP 状态码，`ResponseEntity.status()` 抛 `IllegalArgumentException` → handler 自身失败 → Spring 记一条 **WARN** 后放弃、原异常继续上抛，表面症状是 500 且堆栈指向 `BizException`（症状），真凶只在 WARN 行（病因）。② 兜底 handler 用 `Exception.class` 过宽，会劫持 Spring 自己的框架异常（`NoResourceFoundException` 404、`HttpRequestMethodNotSupportedException` 405、将来的 `MethodArgumentNotValidException` 400），全部变成 500；收窄到 `RuntimeException.class` 后框架异常得以落到 Spring 默认处理，状态码恢复正确。
 
   **已知残留（M1-2 处理）**：`HttpMessageNotReadableException`（客户端发来畸形 JSON）继承自 `RuntimeException`，会落进兜底 handler 返回 500，本应是 400。M1-2 加 Bean Validation 时要为 `MethodArgumentNotValidException` 写专门 handler，届时一并覆盖。
-- **M1-2 register / login 改造**：**接口设计已定（2026-09-06），代码未开始。** 五条决策待作者落笔为 `docs/adr/001-register-login-api-contract.md`：
+- **M1-2 register / login 改造**：**接口设计已定（2026-09-06），代码未开始。** 五条决策见 **[`docs/adr/001-register-login-api-contract.md`](docs/adr/001-register-login-api-contract.md)（2026-09-06 完成）**，摘要：
   1. `register` 成功返回完整 `UserVO`，状态码 `201 Created`（省一次往返；REST 惯例还可附 `Location` 头，可选做）
   2. `login` 入参从 form 参数改为 JSON body —— **密码绝不能进 URL query**：会被 access log、网关/CDN 日志、浏览器历史、Referer 头、APM 按 URL 聚合各记一份，**HTTPS 也挡不住**（加密的是传输，到服务端就是明文进日志）
   3. 新建 `LoginVO { UserVO user; }` 组合（不平铺 user 字段），M2 时再往里加 `token` —— **加字段不是破坏性变更**，老客户端会忽略不认识的字段
@@ -385,6 +385,7 @@ curl http://localhost:8080/user/<uuid>   # id 是 UUID，且目前没有接口�
 6. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
 7. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
 8. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
+9. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
 
 > 2026-08-16 已修掉并从清单移除：原 #4 包名首字母大写（已改为 `controller`/`service`）、原 #7 死代码（`DatabaseInitializer.java` 已删，启动类两个 `CommandLineRunner` 已删）。其余各项编号已相应前移。
 

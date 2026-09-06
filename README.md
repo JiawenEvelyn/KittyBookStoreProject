@@ -28,4 +28,9 @@ public User getUser() {}
 
 2025-11-12 00:28 UTC+2 First project push to github. With empty code and MySQL/H2 Database established!
 
+JWT token的作用：
+在使用前端浏览器登录访问后台时，第一次虽然用用户信息登录成功，但是后续的接口访问对后台服务器来说是全新的、
+它并不能无法识别某个浏览器前台绑定的是某个已登录的用户；因此需要在未来实现登录鉴权时，让服务器对改次用户登录生成一个
+唯一token并返回，后续浏览器上用户进行相关操作时，将token返回后台；后台鉴定成功后才允许浏览器基于该用户进行查询、操作相关数据
+
 
