@@ -32,11 +32,18 @@ public class Result <T> {
         return result;
     }
 
-    public static <T> Result<T> fail(ErrorCode errorCode) {
+    public static  Result<Void> fail(ErrorCode errorCode) {
+        Result<Void> result = new Result<>();
+        result.code = errorCode.getCode();
+        result.message = errorCode.getMessage();
+        return result;
+    }
+
+    public static <T> Result<T> fail(ErrorCode errorCode, T data) {
         Result<T> result = new Result<>();
         result.code = errorCode.getCode();
         result.message = errorCode.getMessage();
-        result.data = null;
+        result.data = data;
         return result;
     }
 }

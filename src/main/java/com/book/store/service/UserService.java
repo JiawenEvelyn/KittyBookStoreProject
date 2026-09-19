@@ -16,31 +16,31 @@ public class UserService {
     private UserMapper userMapper;
 
     /**
-     * 注册用户实现方法
+     * register user info
      */
-    public boolean register(User user) {
+    public User register(User user) {
         User exist = userMapper.queryByName(user.getName());
         if (exist != null) {
-            return false;
+            throw new BizException(ErrorCode.USER_EXISTED);
         }
         user.setId(UUID.randomUUID().toString());
         userMapper.insert(user);
-        return true;
+        return userMapper.queryById(user.getId());
     }
 
     /**
-     * 登录用户
+     * login service
      */
     public User login(String name, String password) {
-        User user = userMapper.queryByName(name);
-        if (user != null && user.getPassword().equals(password)) {
-            return user;
+        User userDb = userMapper.queryByName(name);
+        if (userDb == null || !userDb.getPassword().equals(password)) {
+            throw new BizException(ErrorCode.USER_UNAUTHORIZED);
         }
-        return null;
+        return userDb;
     }
 
     /**
-     * 查询用户
+     * query user info
      */
     public User queryUserById(String id) {
         User userDb = userMapper.queryById(id);

@@ -28,6 +28,12 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
+		<!-- Bean Validation: declarative parameter checking via annotations (@NotBlank, @Email...) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
 		<!-- 测试(JUnit + Mock + Spring Test) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
