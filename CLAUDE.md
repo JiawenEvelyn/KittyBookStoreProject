@@ -85,22 +85,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
   过程中踩过、值得记住的两个坑：① `handleBiz` 曾误用业务码 `1001` 当 HTTP 状态码，`ResponseEntity.status()` 抛 `IllegalArgumentException` → handler 自身失败 → Spring 记一条 **WARN** 后放弃、原异常继续上抛，表面症状是 500 且堆栈指向 `BizException`（症状），真凶只在 WARN 行（病因）。② 兜底 handler 用 `Exception.class` 过宽，会劫持 Spring 自己的框架异常（`NoResourceFoundException` 404、`HttpRequestMethodNotSupportedException` 405、将来的 `MethodArgumentNotValidException` 400），全部变成 500；收窄到 `RuntimeException.class` 后框架异常得以落到 Spring 默认处理，状态码恢复正确。
 
-  **已知残留（M1-2 处理）**：`HttpMessageNotReadableException`（客户端发来畸形 JSON）继承自 `RuntimeException`，会落进兜底 handler 返回 500，本应是 400。M1-2 加 Bean Validation 时要为 `MethodArgumentNotValidException` 写专门 handler，届时一并覆盖。
-- **M1-2 register / login 改造**：**接口设计已定（2026-09-06），代码未开始。** 五条决策见 **[`docs/adr/001-register-login-api-contract.md`](docs/adr/001-register-login-api-contract.md)（2026-09-06 完成）**，摘要：
+  **已知残留（✅ 2026-09-15 M1-2 已解决）**：`HttpMessageNotReadableException`（客户端发来畸形 JSON）继承自 `RuntimeException`，会落进兜底 handler 返回 500，本应是 400。M1-2 加 Bean Validation 时要为 `MethodArgumentNotValidException` 写专门 handler，届时一并覆盖。
+- **M1-2 register / login 改造（2026-09-15 完成）✅**：契约的五条决策见 **[`docs/adr/001-register-login-api-contract.md`](docs/adr/001-register-login-api-contract.md)**，摘要：
   1. `register` 成功返回完整 `UserVO`，状态码 `201 Created`（省一次往返；REST 惯例还可附 `Location` 头，可选做）
   2. `login` 入参从 form 参数改为 JSON body —— **密码绝不能进 URL query**：会被 access log、网关/CDN 日志、浏览器历史、Referer 头、APM 按 URL 聚合各记一份，**HTTPS 也挡不住**（加密的是传输，到服务端就是明文进日志）
   3. 新建 `LoginVO { UserVO user; }` 组合（不平铺 user 字段），M2 时再往里加 `token` —— **加字段不是破坏性变更**，老客户端会忽略不认识的字段
   4. `/api/v1` 前缀写在每个 Controller 的 `@RequestMapping` 上；`HelloController` **不加**（版本号只属于业务 API，不属于探活/运维端点，同理将来的 actuator）
   5. 资源路径用复数：`/api/v1/users/{id}`
 
-  还要一并解决：接口风格不一致（第 9 节 #4）、引入 Bean Validation + DTO 入参、为 `MethodArgumentNotValidException` 写专门 handler（覆盖 M1-1 遗留的畸形 JSON 返 500 问题）。
+  实现过程中又定了三条 **ADR-001 没覆盖**的子决策：
+  - **a. 校验失败的响应体**：`400` + `Result.fail(ErrorCode.BAD_REQUEST, Map<字段, 原因>)`，字段明细放 `data`。没选"拼进 message"：多字段错误无法稳定拼接（Bean Validation 不保证顺序），前端也无法把提示定位到对应输入框
+  - **b. `ErrorCode` 按业务域分段**：`0` 成功 / `1xxx` user / `2xxx` book / `3xxx` author / `9xxx` 通用（`9001` 参数校验失败、`9002` 请求体 JSON 畸形、`9999` 未知）。没选"按错误性质分段"：那会和 HTTP 状态码重复编码同一信息。**body 的 code 恒以 0 表示成功**，"创建成功"只由 HTTP 201 表达
+  - **c. login 失败不区分"用户不存在"和"密码错误"**，统一 `401 / 1002` —— 防**用户枚举**（撞库、定向钓鱼、账号存在性本身就是隐私）。注册撞名的 `409` 仍会泄露账号存在性，本期接受
+
+  → a、b 属于对外契约且"发布后不能改"，**待补写 ADR-002**（作者自己写，Claude review）。
+
+  产出：`dto/RegisterRequest`、`dto/LoginRequest`（Bean Validation，上限对齐列宽）、`vo/LoginVO`；`register` 撞名抛 `409 / 1003`；`GlobalExceptionHandler` 新增 `MethodArgumentNotValidException`、`HttpMessageNotReadableException` 两个 handler（4xx 一律 `log.warn`）。**端到端 12 条用例验收通过**（含边界值：email 恰好 50 字符通过、62 字符返 400；旧路径 `/user/register` 返 404）。
+
+  过程中踩过的坑 —— 共同特征是**编译通过、看起来是对的**：
+  ① `@Valid` 标在 DTO **类声明**上 → 编译不报错，但校验一条都不执行，空用户名注册成功。它必须标在 Controller 方法参数上：触发校验的是 `RequestResponseBodyMethodProcessor`，它只看参数
+  ② 用 `Result.created()` + `ErrorCode.CREATED(9001, 201)` 表达创建成功 → HTTP 仍是 200（`Result` 只是 body，碰不到状态行），而且成功码变成 9001，破坏了"code==0 即成功"的不变式。正解是 `@ResponseStatus(HttpStatus.CREATED)`
+  ③ login 复用 `queryUserById` → 用户不存在抛 404、密码错抛 401，用户枚举从复用的方法里漏了回来。**复用方法时不光看返回值，还要看它抛的异常语义是否匹配当前场景**
+  ④ 校验明细取 `getRejectedValue()` → 会把用户输入的**密码明文**回显进响应体和日志。必须取 `getDefaultMessage()`；永远不要无条件回显用户输入（M3 还会是反射型 XSS 入口）
+  ⑤ 为迁就 DTO 里随手写的 `max=36`，把 `schema.sql` 列宽改窄（`password VARCHAR(36)` 装不下 M2 的 60 字符 BCrypt 哈希）→ 已回滚。**列宽由真实数据决定，校验注解去对齐列宽，不能反过来**；而且改表命中了设计文档触发清单第 2 条
+  ⑥ `email` 漏了 `@Size(max=50)` → 格式合法的 62 字符邮箱通过校验、撞 MySQL 列宽返 500。靠边界值用例才发现 —— 开发者自己的短邮箱永远测不出来
+  ⑦ 泛型工厂 `fail(ErrorCode, String)` 声明了 `<T>` 却把返回类型写死为 `Result<Map<...>>` → 编译失败。`<T>` 必须出现在参数上才能被推断：`<T> Result<T> fail(ErrorCode, T data)`
 - **M1-3 起**：author / book 模块三层、MyBatis 关联映射、`@Transactional`、JUnit + Mockito。
 
 **学什么**：
 - Spring **IOC/DI 原理** —— 为什么 `@Autowired` 能工作；字段注入 vs 构造器注入（工业界为什么偏爱后者）
 - Spring **MVC 请求处理流程** —— DispatcherServlet 到底做了什么
-- **统一响应体 `Result<T>` + DTO/VO 分层 + `@RestControllerAdvice` 全局异常处理**（解决第 9 节 #3）
-- **Bean Validation** 参数校验
+- **统一响应体 `Result<T>` + DTO/VO 分层 + `@RestControllerAdvice` 全局异常处理**（✅ M1-1 / M1-2 已完成）
+- **Bean Validation** 参数校验（✅ M1-2 已完成）
 - MyBatis **动态 SQL** 与 **association/collection 关联映射**（book join author —— 地图功能的前置）
 - **`@Transactional`** 事务传播行为与失效场景
 - **JUnit + Mockito** 单元测试（区别于现有的集成测试）
@@ -149,7 +165,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **做什么**：微信读书同步、Docker 化、缓存、CI。
 
-**学什么**：**Docker + Docker Compose**（多服务编排，这时才有真实动机）、**Redis**（缓存书架、缓存一致性、用分布式锁防同步任务并发）、**GitHub Actions** CI、**Flyway** 数据库迁移（解决第 9 节 #5）、HTTP 客户端的重试与限流（呼应作者的网络协议强项）。
+**学什么**：**Docker + Docker Compose**（多服务编排，这时才有真实动机）、**Redis**（缓存书架、缓存一致性、用分布式锁防同步任务并发）、**GitHub Actions** CI、**Flyway** 数据库迁移（解决第 9 节 #3）、HTTP 客户端的重试与限流（呼应作者的网络协议强项）。
 
 ---
 
@@ -259,12 +275,13 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 | 框架 | Spring Boot 3.5.7 | `spring-boot-starter-web`，纯 REST，内嵌 Tomcat |
 | 持久层 | MyBatis 3.0.3（`mybatis-spring-boot-starter`） | 注解 SQL 与 XML SQL 混用，见第 7 节 |
 | 数据库 | MySQL 8（本地 3306，库名 `kittybookstoredb`） | 建表脚本 `schema.sql` 启动时执行 |
+| Validation | Bean Validation (`spring-boot-starter-validation` → Hibernate Validator 8) | Declarative rules on DTOs, triggered by `@Valid` on controller parameters. Added in M1-2 |
 | 测试数据库 | H2 内存库（`MODE=MySQL`） | 仅 test scope，复用同一份 `schema.sql` |
 | 简化代码 | Lombok 1.18.30（`@Data`） | |
 | 测试 | JUnit 5 + Spring Test + TestRestTemplate + AssertJ | |
 | 构建 | Maven（自带 `mvnw` wrapper） | |
 
-**尚未引入，且各自对应一个里程碑**：Bean Validation + `@RestControllerAdvice`（M1）、Spring Security / JWT（M2）、前端框架 + 地图库（M3）、AI SDK + 向量检索（M4）、Docker / Redis / Flyway / GitHub Actions（M5）。引入时按第 4 节先讲清它解决什么问题。
+**尚未引入，且各自对应一个里程碑**：Spring Security / JWT（M2）、前端框架 + 地图库（M3）、AI SDK + 向量检索（M4）、Docker / Redis / Flyway / GitHub Actions（M5）。引入时按第 4 节先讲清它解决什么问题。
 
 `spring.docker.compose.enabled: false` 是刻意关掉的 —— 项目里没有 `compose.yaml`，`HELP.md` 里那段"必须添加 Docker Compose 服务否则无法启动"的提示已经不适用。
 
@@ -283,14 +300,17 @@ com.book.store
 ├── mapper/                     UserMapper、BookMapper
 ├── common/                     Result<T> 统一响应体、ErrorCode 错误码枚举
 ├── exception/                  BizException、GlobalExceptionHandler
-└── vo/                         UserVO（出参，不含 password/phone）
+├── dto/                        RegisterRequest、LoginRequest (request bodies + validation rules)
+└── vo/                         UserVO (no password/phone), LoginVO { UserVO user }
 ```
 
-`dto/`（入参）尚未建立 —— register/login 还在直接收 `User` 实体，M1-2 补。
+**Object roles (M1-2)**: DTO carries input and its validation rules; Entity is for persistence; VO shapes output. The Controller converts DTO → Entity (`RegisterRequest.toEntity`) and Entity → VO; the Service only sees Entities or plain values (`login(name, password)`). UUID generation stays in the Service, never in a DTO — the M5 WeRead sync job will create records without going through any DTO.
+
+**Validation layering**: format/length rules live on DTOs and reject bad input before the controller method runs (400 · `9001` · per-field reasons in `data`). Rules that need the database (duplicate name → 409) live in the Service. `@Size` upper bounds must match the column widths in `schema.sql`, otherwise over-length input becomes a 500.
 
 **约定**：Service 返回 Entity，Controller 负责转 VO（`UserVO.from(user)` 静态工厂）。理由是 Service 之间会互相调用，只吐 VO 会让内部调用方拿不到完整数据。
 
-**错误处理链路**：Service 抛 `BizException(ErrorCode.XXX)` → `GlobalExceptionHandler` 接住 → HTTP 状态码取自 `ErrorCode.getHttpStatus()`，body 是 `Result.fail(errorCode)`。这是"混合式"响应协议（2026-09-01 决策）：**HTTP 状态码表达哪一类问题，body 的 code 表达具体哪个问题**。新增错误一律往 `ErrorCode` 枚举里加，它是全项目错误的唯一真相来源。
+**错误处理链路**：Service 抛 `BizException(ErrorCode.XXX)` → `GlobalExceptionHandler` 接住 → HTTP 状态码取自 `ErrorCode.getHttpStatus()`，body 是 `Result.fail(errorCode)`。这是"混合式"响应协议（2026-09-01 决策）：**HTTP 状态码表达哪一类问题，body 的 code 表达具体哪个问题**。新增错误一律往 `ErrorCode` 枚举里加，它是全项目错误的唯一真相来源。Code ranges: `0` success · `1xxx` user · `2xxx` book · `3xxx` author · `9xxx` common/system. A success body always has `code: 0`; which *kind* of success (200 vs 201) is expressed only by the HTTP status (`@ResponseStatus`).
 
 ### MyBatis 的两种写法并存
 
@@ -322,7 +342,7 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 
 1. **后端只出 JSON，绝不做服务端渲染。** 不引入 Thymeleaf / JSP 之类模板引擎。已经是这条路线，保持即可。
 2. **鉴权必须是 JWT，不能是 Session + Cookie。** Session 依赖 Cookie 与同源，移动端原生 App 没有 Cookie 容器。M2 的路线图本来就是 JWT，**这条已经天然满足** —— 但 M2 换 Spring Security 时要留意别退回默认的 Session 模式。
-3. **接口路径必须带版本号 `/api/v1/...`。** Web 前后端可以一起发版，App 不行 —— 用户不升级，老版本永远在调你的旧接口。**破坏性变更在 App 时代是致命的**，版本前缀是唯一的退路。当前路径还是 `/user/{id}`，**M1-2 顺手加上前缀**，成本近乎为零，越晚加越贵。
+3. **接口路径必须带版本号 `/api/v1/...`。** Web 前后端可以一起发版，App 不行 —— 用户不升级，老版本永远在调你的旧接口。**破坏性变更在 App 时代是致命的**，版本前缀是唯一的退路。✅ Done in M1-2: all user endpoints now live under `/api/v1/users`.
 
    **实现方式已定（2026-09-06，ADR-001）：前缀写在每个 Controller 的 `@RequestMapping` 上，绝不要用 `server.servlet.context-path` 做全局前缀。** 理由是致命的：全局配置只能有一个值，将来改成 `/api/v2` 会让所有 v1 接口瞬间 404 —— 而版本号存在的全部意义就是 **v1 与 v2 必须能并存**（老 App 还在调 v1）。用全局配置等于让版本号退化成一个装饰，恰好毁掉本条约束想要的能力。（等 Controller 多到重复烦人时，可重构为 `WebMvcConfigurer.configurePathMatch` 按包/注解统一加前缀 —— 那种写法同样支持 v1/v2 共存。）
 4. **响应协议一旦定死就不能随意改。** `Result<T>` 的字段名、`ErrorCode` 里已发布的 code 数值，App 端会硬编码判断。加新 code 可以，改旧 code 的含义不行。
@@ -336,7 +356,7 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 设计得最好的一块，注意保持：生产跑 MySQL、测试跑 H2 内存库，**两者复用同一份 `schema.sql`**。测试类用 `@ActiveProfiles("test")` 切到 `application-test.yaml`。新增表时只改 `schema.sql` 一处，测试库自动跟上。
 
 - `BookMapperTest`：Mapper 层集成测试（H2）
-- `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #6）
+- `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #4）
 
 ## 8. 常用命令
 
@@ -368,26 +388,29 @@ H2 测试库不受影响（每次测试都是全新的空内存库）。这个�
 冒烟验证现有接口：
 
 ```bash
-curl -X POST http://localhost:8080/user/register -H 'Content-Type: application/json' -d '{"name":"kitty","email":"a@b.com","phone":"123","password":"pwd","nationality":"CN"}'
-curl -X POST 'http://localhost:8080/user/login?name=kitty&password=pwd'
-curl http://localhost:8080/user/<uuid>   # id 是 UUID，且目前没有接口会返回它，见第 9 节 #3
+curl -i -X POST http://localhost:8080/api/v1/users/register -H 'Content-Type: application/json' -d '{"name":"kitty","email":"a@b.com","phone":"13800001111","password":"pwd1234567","nationality":"CN"}'   # 201, body carries the new id
+curl -i -X POST http://localhost:8080/api/v1/users/login -H 'Content-Type: application/json' -d '{"name":"kitty","password":"pwd1234567"}'
+curl -i http://localhost:8080/api/v1/users/<uuid>
 ```
+
+Expected error paths: invalid fields → 400 · `9001` (reasons in `data`); malformed JSON → 400 · `9002`; wrong password **or** unknown user → 401 · `1002` (identical on purpose); duplicate name → 409 · `1003`; unknown id → 404 · `1001`.
 
 ## 9. 已知问题清单（作者的练手清单，**不要擅自修掉**）
 
 每一项都标了归属里程碑。Claude 的任务是在被问到时解释清楚"为什么是问题、怎么修"，而不是顺手改掉：
 
-1. **密码明文存储、明文比对**（`UserService.login`）→ **M2**（BCrypt）
+1. **密码明文存储、明文比对**（`UserService.login`）→ **M2**（BCrypt）。Heads-up for M2: when the user does not exist, `login` must still run a (dummy) hash comparison — otherwise the response-time gap between "return immediately" and "tens of ms of BCrypt" re-opens the user-enumeration hole that M1-2 closed at the response-body level (timing side channel)
 2. **登录后没有任何会话/令牌** —— 目前没有鉴权体系。**具体后果**：`GET /user/{id}` 不做任何身份校验，谁拿到 UUID 谁就能读到那个人的 email/phone，这就是 OWASP 榜上的 **IDOR（越权访问）**。注意"UUID 猜不到所以还算安全"是错误的安全观（security by obscurity）—— UUID 会漏在日志、浏览器历史、分享出去的链接、错误上报里，**它是标识符，不是密码** → **M2**（先手写 JWT，再上 Spring Security）
-3. **缺 DTO/VO 分层与统一响应体 `Result<T>`** → **M1｜部分完成**。三个具体后果（2026-08-04 冒烟实测）：① `GET /user/{id}` 把 `password` 一起返回 —— **✅ 2026-09-02 已修**（`UserVO`）；② 查不到用户时返回 `200` + 空 body 而非 `404` —— **✅ 2026-09-05 已修**（`BizException` + `GlobalExceptionHandler`，实测返回 404 + `{"code":1001,...}`）；③ `register`/`login` 只返回中文字符串、**不返回新用户的 id**，而 id 是 UUID 无法猜测，导致 `GET /user/{id}` 实际上任何客户端都调不到 —— **❌ 未修**，M1-2 处理。做前端（M3）前必须全部解决
-4. **接口风格不一致** —— register 用 JSON body，login 用 form 参数 → **M1**
-5. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
-6. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
-7. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
-8. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
-9. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
+3. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
+4. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
+5. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
+6. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
+7. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
+8. **Register has a check-then-insert race** — `UserService.register` does `queryByName`, then `insert`. Two concurrent requests with the same name can both pass the check; the second insert hits the `UNIQUE` constraint, MyBatis-Spring throws `DuplicateKeyException`, it lands in the fallback handler → **500 instead of 409**. The DB constraint is the real guard; the pre-check is only a fast path. Fix: catch `DuplicateKeyException` and map it to `USER_EXISTED`. Note that `@Transactional` alone does **not** fix this (a plain `SELECT` under REPEATABLE READ takes no lock on a row that doesn't exist yet) — good material for the M1-3 transaction lesson → **M1**
 
 > 2026-08-16 已修掉并从清单移除：原 #4 包名首字母大写（已改为 `controller`/`service`）、原 #7 死代码（`DatabaseInitializer.java` 已删，启动类两个 `CommandLineRunner` 已删）。其余各项编号已相应前移。
+>
+> 2026-09-15 fixed in M1-2 and removed: former #3 (DTO/VO layering + `Result<T>`; register/login now return the user id, so `GET /api/v1/users/{id}` is reachable) and former #4 (inconsistent request styles — both endpoints now take JSON bodies). Remaining items renumbered.
 
 ## 10. 文档维护约定（**每个会话都要遵守**）
 
