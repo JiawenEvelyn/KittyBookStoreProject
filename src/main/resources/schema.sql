@@ -1,17 +1,20 @@
-CREATE TABLE IF NOT EXISTS tbl_book (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(36) NOT NULL,
-    category VARCHAR(12) NOT NULL,
-    author_id VARCHAR(36) NOT NULL,
-    press VARCHAR(50) NOT NULL,
-    introduction VARCHAR(200)
-);
-
 CREATE TABLE IF NOT EXISTS tbl_author (
     id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(36) NOT NULL,
-    nationality VARCHAR(12) NOT NULL,
-    birthday VARCHAR(36) NOT NULL
+    name VARCHAR(100) NOT NULL,
+    nationality CHAR(2) NOT NULL,
+    birthday DATE NULL,
+    UNIQUE(name, nationality)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_book (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(32) NOT NULL,
+    author_id VARCHAR(36) NOT NULL,
+    press VARCHAR(50) NOT NULL,
+    introduction VARCHAR(2000),
+    CONSTRAINT fk_book_author FOREIGN KEY (author_id) REFERENCES tbl_author(id)
+        ON DELETE RESTRICT ON UPDATE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS tbl_user (

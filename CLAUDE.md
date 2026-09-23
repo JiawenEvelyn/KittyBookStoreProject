@@ -110,7 +110,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ⑤ 为迁就 DTO 里随手写的 `max=36`，把 `schema.sql` 列宽改窄（`password VARCHAR(36)` 装不下 M2 的 60 字符 BCrypt 哈希）→ 已回滚。**列宽由真实数据决定，校验注解去对齐列宽，不能反过来**；而且改表命中了设计文档触发清单第 2 条
   ⑥ `email` 漏了 `@Size(max=50)` → 格式合法的 62 字符邮箱通过校验、撞 MySQL 列宽返 500。靠边界值用例才发现 —— 开发者自己的短邮箱永远测不出来
   ⑦ 泛型工厂 `fail(ErrorCode, String)` 声明了 `<T>` 却把返回类型写死为 `Result<Map<...>>` → 编译失败。`<T>` 必须出现在参数上才能被推断：`<T> Result<T> fail(ErrorCode, T data)`
-- **M1-3 起**：author / book 模块三层、MyBatis 关联映射、`@Transactional`、JUnit + Mockito。
+- **M1-3a author 模块 + 测试（2026-09-22 完成）✅**：author 三层打通（`Author` / `AuthorRequest` / `AuthorVO` / `AuthorMapper` + XML / `AuthorService` / `AuthorController`，`POST /api/v1/authors`），`schema.sql` 重写（`tbl_author` 提到最前、`UNIQUE(name, nationality)`、`fk_book_author` 外键 `ON DELETE RESTRICT`），新增 `AuthorMapperTest`（H2 集成）与 `AuthorServiceTest`（Mockito 单元）。**`./mvnw test` 11 条全绿**。
+
+  需求澄清单见 **[`docs/design/book-author.md`](docs/design/book-author.md)**，两条决策见 **[`docs/adr/003-author-management.md`](docs/adr/003-author-management.md)**：① 创建重复作者返 `409 / 3001`（建书流程另走 `findOrCreate` 复用）；② 录入书目时带的作者生日与库里不一致，以库里为准。
+
+  过程中踩过的坑 —— 这一轮的共同特征是**测试是绿的，但什么都没检查**：
+  ① `assertThat(x.isEqual(y));` 后面不接 `.isTrue()` / `.isEqualTo()`，AssertJ 只是造了个断言对象就扔了，表达式为 `false` 也照样绿。**值放进 `assertThat(...)`，期望写在后面的方法里**
+  ② `verify(...)` 写在被测方法调用**之前** → `Wanted but not invoked ... zero interactions`。verify 检查的是已经发生的事，它属于 given/when/**then** 的最后一段
+  ③ 测试里自己先 `setId(...)`，再去断言"Service 会生成 id" → 把要验证的行为自己做掉了，Service 删掉 `setId` 测试照样绿
+  ④ `when(...)` 的 stub 参数拼错（`"Kafa"` vs `"Kafka"`）→ 严格模式下抛 `PotentialStubbingProblem`；莫名其妙的 mock 失败先怀疑参数对不上
+  ⑤ 自检办法：**故意改坏被测代码，看测试会不会变红**。不变红说明它没有保护作用
+  ⑥ 加外键立刻打破了 `BookMapperTest` —— 它一直在写"作者不存在"的书（正是原问题清单 #6）。**加约束会打破一切依赖"没有约束"的旧代码**，这就是真实项目里数据迁移要处理的事（M5 Flyway 会重逢）
+  ⑦ 一度把 UUID 生成挪进 `Author` 构造器 → 已回滚。构造器带隐藏副作用，且与 §7 的"Service 层生成"约定冲突
+  ⑧ `@InjectMocks` 只能靠反射往私有字段里塞替身，因为用的是字段注入 —— 这正是"**工业界为什么偏爱构造器注入**"的一个具体答案：可测试性
+
+- **M1-3b（下一步）**：book 模块三层、**MyBatis association 关联映射**（book join author）、`BookService.create` 上的 **`@Transactional`**（`findOrCreate` + insert book 必须同生共死，这是项目里第一个事务不是装饰的场景）。
 
 **学什么**：
 - Spring **IOC/DI 原理** —— 为什么 `@Autowired` 能工作；字段注入 vs 构造器注入（工业界为什么偏爱后者）
@@ -119,7 +133,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Bean Validation** 参数校验（✅ M1-2 已完成）
 - MyBatis **动态 SQL** 与 **association/collection 关联映射**（book join author —— 地图功能的前置）
 - **`@Transactional`** 事务传播行为与失效场景
-- **JUnit + Mockito** 单元测试（区别于现有的集成测试）
+- **JUnit + Mockito** 单元测试（区别于现有的集成测试）（✅ M1-3a 已完成，`AuthorServiceTest` 是范例）
 
 **面试会怎么问**：Spring 循环依赖怎么解决、`@Transactional` 什么情况下失效、Bean 生命周期、DispatcherServlet 流程。
 
@@ -265,6 +279,8 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 
 **已有三条决策待补写成 ADR**（项目已经做过这些决策，但目前散落在本文件的叙述里）：混合式响应协议（2026-09-01，见第 7 节）、面向多端的四条架构约束（2026-09-02，见第 7 节）、UUID 主键由 Service 层生成（2026-08-04，见第 7 节）。不急，等作者把模板写熟了再回头补 —— 补的过程本身就是很好的复习。
 
+**已写的 ADR**：`001`（register/login 契约，M1-2）、`003`（author 创建语义，M1-3a）。**`002` 是留给 M1-2 那两条子决策的空号**（校验失败响应体的形状、`ErrorCode` 按业务域分段），别以为是丢了。ADR-003 目前还欠三样：建书流程走 `findOrCreate` 的那半个决策、第 5 节"为什么接受暴露作者存在"（作者是公开数据，与 login 故意不区分用户枚举形成对照）、以及"什么时候推翻它"（M5 批量同步遇 409 会中断整批）。
+
 **这个项目教不到的需求 / 架构能力**（诚实标准同第 3 节末尾那张表）：容量估算（QPS / 存储 / 带宽）、可用性设计（降级 / 熔断 / 超时重试）、成本约束下的取舍、多团队并行开发的边界划分。建议 M5 之后做一次**纯纸面**的"假设有 100 万用户"推演，Claude 陪着算，**一行代码都不改** —— 硬往单机项目里塞分布式组件就是自欺欺人。
 
 ## 6. 技术栈
@@ -278,7 +294,7 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 | Validation | Bean Validation (`spring-boot-starter-validation` → Hibernate Validator 8) | Declarative rules on DTOs, triggered by `@Valid` on controller parameters. Added in M1-2 |
 | 测试数据库 | H2 内存库（`MODE=MySQL`） | 仅 test scope，复用同一份 `schema.sql` |
 | 简化代码 | Lombok 1.18.30（`@Data`） | |
-| 测试 | JUnit 5 + Spring Test + TestRestTemplate + AssertJ | |
+| 测试 | JUnit 5 + Spring Test + TestRestTemplate + AssertJ + **Mockito** | Mockito 随 `spring-boot-starter-test` 一起进来，无需额外依赖。两层分工：Mapper 层测 SQL 与数据库约束（H2 真库），Service 层测业务分支（`@Mock` 掉 Mapper，不启动 Spring） |
 | 构建 | Maven（自带 `mvnw` wrapper） | |
 
 **尚未引入，且各自对应一个里程碑**：Spring Security / JWT（M2）、前端框架 + 地图库（M3）、AI SDK + 向量检索（M4）、Docker / Redis / Flyway / GitHub Actions（M5）。引入时按第 4 节先讲清它解决什么问题。
@@ -294,15 +310,17 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 ```
 com.book.store
 ├── KittyBookStoreApplication   启动类，只剩 main 方法
-├── controller/                 HelloController、UserController
-├── service/                    UserService
-├── entity/                     User、Book（@Data 贫血模型，只给 Mapper 用）
-├── mapper/                     UserMapper、BookMapper
+├── controller/                 HelloController、UserController、AuthorController
+├── service/                    UserService、AuthorService
+├── entity/                     User、Book、Author（@Data 贫血模型，只给 Mapper 用）
+├── mapper/                     UserMapper、BookMapper、AuthorMapper
 ├── common/                     Result<T> 统一响应体、ErrorCode 错误码枚举
 ├── exception/                  BizException、GlobalExceptionHandler
-├── dto/                        RegisterRequest、LoginRequest (request bodies + validation rules)
-└── vo/                         UserVO (no password/phone), LoginVO { UserVO user }
+├── dto/                        RegisterRequest、LoginRequest、AuthorRequest (request bodies + validation rules)
+└── vo/                         UserVO (no password/phone), LoginVO { UserVO user }, AuthorVO
 ```
+
+**Two creation semantics on `AuthorService` (M1-3a, ADR-003)**: `createAuthor` is what `POST /api/v1/authors` calls — a duplicate is an error (`409 / 3001`). `findOrCreate` is what the book-creation flow will call — a duplicate is the normal case, so it reuses the stored row and **ignores the incoming birthday**. Do not merge them: the same "author already exists" fact means opposite things to the two callers.
 
 **Object roles (M1-2)**: DTO carries input and its validation rules; Entity is for persistence; VO shapes output. The Controller converts DTO → Entity (`RegisterRequest.toEntity`) and Entity → VO; the Service only sees Entities or plain values (`login(name, password)`). UUID generation stays in the Service, never in a DTO — the M5 WeRead sync job will create records without going through any DTO.
 
@@ -330,8 +348,8 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 | 表 | 状态 |
 |---|---|
 | `tbl_user` | ✅ 实体 + Mapper + Service + Controller 全通，UUID 主键端到端验证过 |
-| `tbl_book` | ⚠️ 实体 + Mapper 已与表结构对齐（`BookMapperTest` 通过）；仍无 Service/Controller |
-| `tbl_author` | ❌ 无代码。**地图功能的核心表**（`nationality` 字段） |
+| `tbl_book` | ⚠️ 实体 + Mapper 已与表结构对齐（`BookMapperTest` 通过）；仍无 Service/Controller → M1-3b |
+| `tbl_author` | ✅ 实体 + Mapper + Service + Controller 全通（`POST /api/v1/authors`），Mapper/Service 双层测试覆盖。**地图功能的核心表**（`nationality`：`CHAR(2)`，`@Pattern(^[A-Z]{2}$)` 只保证"两个大写字母"，**不保证是真实国家码** —— M3 打点前需要 ISO-3166 白名单或接受脏数据） |
 | `tbl_rel_userbook` | ❌ 无代码。用户与书的关系表：阅读状态、评分 |
 | `tbl_bookexcerpt` | ❌ 无代码。精彩书摘 |
 | `tbl_manager` | ❌ 无代码。管理员 |
@@ -355,8 +373,11 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 
 设计得最好的一块，注意保持：生产跑 MySQL、测试跑 H2 内存库，**两者复用同一份 `schema.sql`**。测试类用 `@ActiveProfiles("test")` 切到 `application-test.yaml`。新增表时只改 `schema.sql` 一处，测试库自动跟上。
 
-- `BookMapperTest`：Mapper 层集成测试（H2）
+- `BookMapperTest`、`AuthorMapperTest`：Mapper 层集成测试（H2 真库，验 SQL 与数据库约束）
+- `AuthorServiceTest`：Service 层单元测试（Mockito，`@Mock` 掉 Mapper，**不启动 Spring**，毫秒级）
 - `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #4）
+
+**Mapper 测试类上要加 `@Transactional`** —— 在 Spring Test 里它的含义是"测试方法结束后回滚"（跟生产代码里的含义不同）。没有它，多个方法插入同样的数据会撞 `UNIQUE(name, nationality)`，失败还取决于执行顺序。`AuthorMapperTest` 是范例；`BookMapperTest` 还没加。
 
 ## 8. 常用命令
 
@@ -395,6 +416,14 @@ curl -i http://localhost:8080/api/v1/users/<uuid>
 
 Expected error paths: invalid fields → 400 · `9001` (reasons in `data`); malformed JSON → 400 · `9002`; wrong password **or** unknown user → 401 · `1002` (identical on purpose); duplicate name → 409 · `1003`; unknown id → 404 · `1001`.
 
+Author endpoint (M1-3a):
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/authors -H 'Content-Type: application/json' -d '{"name":"Kafka","nationality":"CZ","birthday":"1883-07-03"}'   # 201; repeat it → 409 · 3001
+```
+
+`birthday` is optional (`null` allowed); `nationality` must match `^[A-Z]{2}$`, so lower case or a 3-letter code → 400 · `9001`.
+
 ## 9. 已知问题清单（作者的练手清单，**不要擅自修掉**）
 
 每一项都标了归属里程碑。Claude 的任务是在被问到时解释清楚"为什么是问题、怎么修"，而不是顺手改掉：
@@ -404,11 +433,13 @@ Expected error paths: invalid fields → 400 · `9001` (reasons in `data`); malf
 3. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
 4. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
 5. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
-6. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
-7. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
-8. **Register has a check-then-insert race** — `UserService.register` does `queryByName`, then `insert`. Two concurrent requests with the same name can both pass the check; the second insert hits the `UNIQUE` constraint, MyBatis-Spring throws `DuplicateKeyException`, it lands in the fallback handler → **500 instead of 409**. The DB constraint is the real guard; the pre-check is only a fast path. Fix: catch `DuplicateKeyException` and map it to `USER_EXISTED`. Note that `@Transactional` alone does **not** fix this (a plain `SELECT` under REPEATABLE READ takes no lock on a row that doesn't exist yet) — good material for the M1-3 transaction lesson → **M1**
+6. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
+7. **Register has a check-then-insert race** — `UserService.register` does `queryByName`, then `insert`. Two concurrent requests with the same name can both pass the check; the second insert hits the `UNIQUE` constraint, MyBatis-Spring throws `DuplicateKeyException`, it lands in the fallback handler → **500 instead of 409**. The DB constraint is the real guard; the pre-check is only a fast path. Fix: catch `DuplicateKeyException` and map it to `USER_EXISTED`. Note that `@Transactional` alone does **not** fix this (a plain `SELECT` under REPEATABLE READ takes no lock on a row that doesn't exist yet) — good material for the M1-3 transaction lesson → **M1**
+8. **`AuthorService` has the same check-then-insert race, twice** — both `createAuthor` and `findOrCreate` do `queryByNameNationality` then `insert`, and `UNIQUE(name, nationality)` now makes the second insert fail → `DuplicateKeyException` → **500 instead of 409**. Deliberately left in so it can be fixed together with #7 during the M1-3b transaction lesson. Note the two callers need **different** repairs: `createAuthor` maps the exception to `AUTHOR_EXISTED` (409), while `findOrCreate` should re-query and return the row the other thread just inserted → **M1-3b**
 
 > 2026-08-16 已修掉并从清单移除：原 #4 包名首字母大写（已改为 `controller`/`service`）、原 #7 死代码（`DatabaseInitializer.java` 已删，启动类两个 `CommandLineRunner` 已删）。其余各项编号已相应前移。
+>
+> 2026-09-22 fixed in M1-3a and removed: former #6 (no foreign key — `tbl_book.author_id` now has `fk_book_author ... ON DELETE RESTRICT`; adding it immediately broke `BookMapperTest`, which had been writing books with a non-existent author all along). Remaining items renumbered; the new #8 was introduced by this milestone.
 >
 > 2026-09-15 fixed in M1-2 and removed: former #3 (DTO/VO layering + `Result<T>`; register/login now return the user id, so `GET /api/v1/users/{id}` is reachable) and former #4 (inconsistent request styles — both endpoints now take JSON bodies). Remaining items renumbered.
 

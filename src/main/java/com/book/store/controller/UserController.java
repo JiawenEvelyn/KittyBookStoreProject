@@ -39,7 +39,7 @@ public class UserController {
 
     /*
     * 查询用户
-    * */
+    */
     @GetMapping("/{id}")
     public Result<UserVO> queryUser(@PathVariable String id) {
         User userDb = userService.queryUserById(id);

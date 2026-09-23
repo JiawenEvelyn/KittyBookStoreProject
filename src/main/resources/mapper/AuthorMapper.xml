@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.book.store.mapper.AuthorMapper">
+    <insert id="insert" parameterType="com.book.store.entity.Author">
+        INSERT INTO tbl_author (id, name, nationality, birthday)
+        VALUES (#{id}, #{name}, #{nationality}, #{birthday})
+    </insert>
+
+    <select id="queryById" parameterType="string" resultType="com.book.store.entity.Author">
+        SELECT *
+        FROM tbl_author WHERE id = #{id}
+    </select>
+
+    <select id="queryByNameNationality" resultType="com.book.store.entity.Author">
+        SELECT *
+        FROM tbl_author WHERE name = #{name} AND nationality = #{nationality}
+    </select>
+</mapper>

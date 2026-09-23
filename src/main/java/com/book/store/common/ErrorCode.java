@@ -22,6 +22,9 @@ public enum ErrorCode {
     USER_UNAUTHORIZED(1002, "Login failed", HttpStatus.UNAUTHORIZED),
     USER_EXISTED(1003, "User info conflict", HttpStatus.CONFLICT),
 
+
+    AUTHOR_EXISTED(3001, "Author info conflict", HttpStatus.CONFLICT),
+
     BAD_REQUEST(9001, "Bad request", HttpStatus.BAD_REQUEST),
     BAD_MESSAGE(9002, "Invalid json format message", HttpStatus.BAD_REQUEST),
     UNEXPECTED(9999, "Internal service exception occurred.", HttpStatus.INTERNAL_SERVER_ERROR);

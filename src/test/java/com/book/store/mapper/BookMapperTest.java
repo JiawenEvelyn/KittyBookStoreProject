@@ -1,5 +1,6 @@
 package com.book.store.mapper;
 
+import com.book.store.entity.Author;
 import com.book.store.entity.Book;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.annotation.MapperScan;
@@ -7,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,15 +22,22 @@ public class BookMapperTest {
     @Autowired
     private BookMapper bookMapper;
 
+    @Autowired
+    private AuthorMapper authorMapper;
+
     @Test
-    void testInsertAndQuery() throws InterruptedException {
+    void testInsertAndQueryWithException() throws InterruptedException {
+        Author author = new Author("Jane", "EN", LocalDate.of(1900, 1, 11));
+        author.setId(UUID.randomUUID().toString());
+        authorMapper.insert(author);
+
         Book book = new Book();
         book.setId(UUID.randomUUID().toString());
         book.setName("Test Book");
         book.setCategory("Fiction");
         book.setAuthorId(UUID.randomUUID().toString());
         book.setPress("Test Press");
-
+        book.setAuthorId(author.getId());
         bookMapper.insert(book);
 
         List<Book> books = bookMapper.query();
