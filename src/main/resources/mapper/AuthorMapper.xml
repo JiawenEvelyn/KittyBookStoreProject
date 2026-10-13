@@ -17,4 +17,9 @@
         SELECT *
         FROM tbl_author WHERE name = #{name} AND nationality = #{nationality}
     </select>
+
+    <select id="queryByNameNationalityForUpdate" resultType="com.book.store.entity.Author">
+        SELECT *
+        FROM tbl_author WHERE name = #{name} AND nationality = #{nationality} FOR UPDATE
+    </select>
 </mapper>

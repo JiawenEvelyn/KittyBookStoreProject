@@ -12,4 +12,7 @@ public interface AuthorMapper {
     Author queryById(String id);
 
     Author queryByNameNationality(@Param("name") String name, @Param("nationality") String nationality);
+
+    Author queryByNameNationalityForUpdate(@Param("name") String name, @Param("nationality") String nationality);
+
 }

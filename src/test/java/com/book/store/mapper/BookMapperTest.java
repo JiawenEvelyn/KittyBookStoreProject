@@ -7,16 +7,19 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest
 @MapperScan("com.book.store.mapper")
 @ActiveProfiles("test") // 使用 application-test.yaml
+@Transactional
 public class BookMapperTest {
 
     @Autowired
@@ -35,7 +38,6 @@ public class BookMapperTest {
         book.setId(UUID.randomUUID().toString());
         book.setName("Test Book");
         book.setCategory("Fiction");
-        book.setAuthorId(UUID.randomUUID().toString());
         book.setPress("Test Press");
         book.setAuthorId(author.getId());
         bookMapper.insert(book);
@@ -43,5 +45,24 @@ public class BookMapperTest {
         List<Book> books = bookMapper.query();
         assertFalse(books.isEmpty());
         System.out.println("Books in H2: count: " + books.size() + " info: {}" + books);
+    }
+
+    @Test
+    void queryByIdShouldReturnWithAuthorInfo() {
+        Author author = new Author("Jane", "EN", LocalDate.of(1900, 1, 11));
+        author.setId(UUID.randomUUID().toString());
+        authorMapper.insert(author);
+
+        Book book = new Book();
+        book.setId(UUID.randomUUID().toString());
+        book.setName("Test Book");
+        book.setCategory("Fiction");
+        book.setPress("Test Press");
+        book.setAuthorId(author.getId());
+        bookMapper.insert(book);
+
+        Book result = bookMapper.queryById(book.getId());
+        assertNotNull(result.getAuthor());
+        assertNotNull(result.getAuthor().getName());
     }
 }

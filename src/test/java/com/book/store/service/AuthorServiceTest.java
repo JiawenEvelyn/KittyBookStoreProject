@@ -9,8 +9,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -55,21 +57,37 @@ public class AuthorServiceTest {
 
     @Test
     void findOrCreateShouldReturnDBWithExistedRecord() {
-        Author existed = new Author("Kafka", "CZ", LocalDate.of(1883, 7, 3));
-        when(authorMapper.queryByNameNationality("Kafka", "CZ")).thenReturn(existed);
+        Author author = new Author("Kafka", "CZ", LocalDate.of(1883, 7, 3));
+        when(authorMapper.queryByNameNationality("Kafka", "CZ")).thenReturn(author);
 
-        Author result = authorService.findOrCreate("Kafka", "CZ", LocalDate.of(1883, 7, 3));
-        assertThat(result.getName()).isEqualTo(existed.getName());
-        assertThat(result.getNationality()).isEqualTo(existed.getNationality());
+        Author result = authorService.findOrCreate(author);
+        assertThat(result.getName()).isEqualTo(author.getName());
+        assertThat(result.getNationality()).isEqualTo(author.getNationality());
         verify(authorMapper, never()).insert(any());
     }
 
     @Test
     void findOrCreateShouldCreateWithoutExisted() {
         when(authorMapper.queryByNameNationality("Kafka", "CZ")).thenReturn(null);
-
-        Author result = authorService.findOrCreate("Kafka", "CZ", LocalDate.of(1883, 7, 3));
+        Author author = new Author("Kafka", "CZ", LocalDate.of(1883, 7, 3));
+        Author result = authorService.findOrCreate(author);
         assertNotNull(result.getId());
         verify(authorMapper).insert(any());
+    }
+
+    @Test
+    void findOrCreateShouldReturnAuthorWhenInsertWithDuplicateKeyEx() {
+        when(authorMapper.queryByNameNationality("kafka", "CZ")).thenReturn(null);
+        doThrow(new DuplicateKeyException("duplicate key!")).when(authorMapper).insert(any());
+        Author inserted = new Author("kafka", "CZ", LocalDate.of(1883, 7, 3));
+        inserted.setId(UUID.randomUUID().toString());
+
+        when(authorMapper.queryByNameNationalityForUpdate("kafka", "CZ")).thenReturn(inserted);
+        Author author = authorService.findOrCreate(inserted);
+
+        verify(authorMapper).queryByNameNationalityForUpdate("kafka", "CZ");
+        assertNotNull(author);
+        assertThat(author.getName()).isEqualTo("kafka");
+        assertThat(author.getNationality()).isEqualTo("CZ");
     }
 }

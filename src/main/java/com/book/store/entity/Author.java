@@ -17,6 +17,11 @@ public class Author {
 
     public Author() {}
 
+    public Author(String name, String nationality) {
+        this.setName(name);
+        this.setNationality(nationality);
+    }
+
     public Author(String name, String nationality, LocalDate birthday) {
         this.setName(name);
         this.setNationality(nationality);

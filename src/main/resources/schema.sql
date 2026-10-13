@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS tbl_book (
     press VARCHAR(50) NOT NULL,
     introduction VARCHAR(2000),
     CONSTRAINT fk_book_author FOREIGN KEY (author_id) REFERENCES tbl_author(id)
-        ON DELETE RESTRICT ON UPDATE RESTRICT
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    UNIQUE(name, author_id)
 );
 
 CREATE TABLE IF NOT EXISTS tbl_user (
