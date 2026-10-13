@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -46,6 +47,15 @@ public class GlobalExceptionHandler {
         Map<String, String> fieldMap = new HashMap<>();
         fieldErrors.forEach(fieldError -> fieldMap.put(fieldError.getField(), fieldError.getDefaultMessage()));
         return fieldMap;
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Result<Map<String, String>>> handleMissingServletRequestParameterException(MissingServletRequestParameterException e) {
+        log.warn("MissingServletRequestParameterException exception while handling request, ", e);
+        Map<String, String> map = new HashMap<>();
+        map.put(e.getParameterName(), "is required.");
+        return ResponseEntity.status(ErrorCode.BAD_REQUEST.getHttpStatus()).body(Result.fail(ErrorCode.BAD_REQUEST, map));
+
     }
 }
 

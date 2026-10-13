@@ -18,6 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **例外：当作者用中文提问，或明确要求中文时，用中文回答。** 语言切换是为了练习，不是为了给理解设障碍 —— 遇到讲不清的新概念，Claude 应主动补一句中文注解，而不是硬撑英文。
 
+**回答要精简（2026-10-03 作者要求）**：只保留结论、需要作者决定的问题、下一步动作。选项每条一行，推荐项标明，理由一句话。背景、原理讲解、面试点只在作者追问时展开。作者不想花时间理解冗长的 AI 回答。
+
 `CLAUDE.md` 采用**混合策略**：技术性章节（6~9 节：技术栈、架构、命令、问题清单）随代码演进逐步改写为英文；第 2、3 节（职业时间线、学习路线图）**保持中文** —— 那是作者的个人规划，表达精度优先于练习。
 
 ---
@@ -110,7 +112,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ⑤ 为迁就 DTO 里随手写的 `max=36`，把 `schema.sql` 列宽改窄（`password VARCHAR(36)` 装不下 M2 的 60 字符 BCrypt 哈希）→ 已回滚。**列宽由真实数据决定，校验注解去对齐列宽，不能反过来**；而且改表命中了设计文档触发清单第 2 条
   ⑥ `email` 漏了 `@Size(max=50)` → 格式合法的 62 字符邮箱通过校验、撞 MySQL 列宽返 500。靠边界值用例才发现 —— 开发者自己的短邮箱永远测不出来
   ⑦ 泛型工厂 `fail(ErrorCode, String)` 声明了 `<T>` 却把返回类型写死为 `Result<Map<...>>` → 编译失败。`<T>` 必须出现在参数上才能被推断：`<T> Result<T> fail(ErrorCode, T data)`
-- **M1-3 起**：author / book 模块三层、MyBatis 关联映射、`@Transactional`、JUnit + Mockito。
+- **M1-3a author 模块 + 测试（2026-09-22 完成）✅**：author 三层打通（`Author` / `AuthorRequest` / `AuthorVO` / `AuthorMapper` + XML / `AuthorService` / `AuthorController`，`POST /api/v1/authors`），`schema.sql` 重写（`tbl_author` 提到最前、`UNIQUE(name, nationality)`、`fk_book_author` 外键 `ON DELETE RESTRICT`），新增 `AuthorMapperTest`（H2 集成）与 `AuthorServiceTest`（Mockito 单元）。**`./mvnw test` 11 条全绿**。
+
+  需求澄清单见 **[`docs/design/book-author.md`](docs/design/book-author.md)**，两条决策见 **[`docs/adr/003-author-management.md`](docs/adr/003-author-management.md)**：① 创建重复作者返 `409 / 3001`（建书流程另走 `findOrCreate` 复用）；② 录入书目时带的作者生日与库里不一致，以库里为准。
+
+  过程中踩过的坑 —— 这一轮的共同特征是**测试是绿的，但什么都没检查**：
+  ① `assertThat(x.isEqual(y));` 后面不接 `.isTrue()` / `.isEqualTo()`，AssertJ 只是造了个断言对象就扔了，表达式为 `false` 也照样绿。**值放进 `assertThat(...)`，期望写在后面的方法里**
+  ② `verify(...)` 写在被测方法调用**之前** → `Wanted but not invoked ... zero interactions`。verify 检查的是已经发生的事，它属于 given/when/**then** 的最后一段
+  ③ 测试里自己先 `setId(...)`，再去断言"Service 会生成 id" → 把要验证的行为自己做掉了，Service 删掉 `setId` 测试照样绿
+  ④ `when(...)` 的 stub 参数拼错（`"Kafa"` vs `"Kafka"`）→ 严格模式下抛 `PotentialStubbingProblem`；莫名其妙的 mock 失败先怀疑参数对不上
+  ⑤ 自检办法：**故意改坏被测代码，看测试会不会变红**。不变红说明它没有保护作用
+  ⑥ 加外键立刻打破了 `BookMapperTest` —— 它一直在写"作者不存在"的书（正是原问题清单 #6）。**加约束会打破一切依赖"没有约束"的旧代码**，这就是真实项目里数据迁移要处理的事（M5 Flyway 会重逢）
+  ⑦ 一度把 UUID 生成挪进 `Author` 构造器 → 已回滚。构造器带隐藏副作用，且与 §7 的"Service 层生成"约定冲突
+  ⑧ `@InjectMocks` 只能靠反射往私有字段里塞替身，因为用的是字段注入 —— 这正是"**工业界为什么偏爱构造器注入**"的一个具体答案：可测试性
+
+- **M1-3b book 模块（2026-10-05 完成）✅** —— **M1-3 整体完成**：book 模块三层、**MyBatis association 关联映射**（book join author）、`BookService.create` 上的 **`@Transactional`**（`findOrCreate` + insert book 必须同生共死，这是项目里第一个事务不是装饰的场景）。
+
+  **已定决策（2026-09-24）**：① 详情接口 `GET /books/{id}` 带嵌套 `author`，列表接口 `GET /books?category=` 只带 `authorId`（"分开查询"，避免列表 N+1）；② 第 9 节 #8 这次一起修；③ 校验失败复用 `9001`，但"书不存在"仍需 `BOOK_NOT_FOUND(2001, 404)`（9001 是 400，语义不同）；④ `BookRequest` 嵌套 `author: AuthorRequest`（内层要再加 `@Valid`）；⑤ `Book` 实体加了 `author` 字段承载关联结果。
+
+  **已定决策（2026-09-29）**：
+  ⑥ **`findOrCreate` 竞态修法选"锁定读"**：insert 撞 `DuplicateKeyException` 后，用新增的 `AuthorMapper.queryByNameNationalityForUpdate`（`SELECT ... FOR UPDATE`）重查。原因：在 `@Transactional` 里，REPEATABLE READ 下普通 SELECT 是**快照读**，快照在事务第一次读时建立，重查看不到对方刚提交的行 → 返回 null → 后续 NPE / NOT NULL 违约，仍是 500。`FOR UPDATE` 是**当前读**，读最新已提交版本。没选 READ COMMITTED（影响整个事务，代价过大）和"让客户端重试"（把问题甩给调用方）。**面试点：MVCC 快照读 vs 当前读。** 局限：Mockito 单测只能证明"撞车后走到了锁定读"，证明不了可见性本身 —— 那要开两个 MySQL 会话手动实验
+  ⑦ **book 接口契约定稿**（待写成 **ADR-004，英文**）：
+  ```
+  POST /api/v1/books              201 + BookVO（带嵌套 author）
+  GET  /api/v1/books/{id}         200 + BookVO（带嵌套 author）；不存在 → 404 · BOOK_NOT_FOUND
+  GET  /api/v1/books?category=xx  200 + 列表（只带 authorId）；category 必填，缺失 → 400 · 9001；无匹配 → 200 + []
+  ```
+  category 必填的理由：分页 M2 才做，不带参数返回全部书没有上界；将来改成可选是**放宽约束**，不算破坏性变更。
+
+  **进度（2026-09-29）**：(a)(b)(c) 完成 —— `BookMapper.xml` 两处已修；`findOrCreate` 已加 catch + 锁定读重查，`AuthorServiceTest` 补了撞车路径用例；`BookMapperTest` 加了 `@Transactional` 与 association 用例。`BookService.insertBookRecord`、`BookController`（仅 POST）、`BookRequest`、`BookVO` 初版已写。`./mvnw test` 13 条全绿 —— **但 `BookService` / `queryByKey` / POST 接口都没有测试覆盖，绿灯不代表建书能跑通**（见下方 review 2）。
+
+  **进度（2026-10-05）**：review 2 全部修完；两个待决问题已定 —— 重复书按 `书名 + author_id` 判重，返回 `409 · 2002 BOOK_EXISTED`，`tbl_book` 加了 `UNIQUE(name, author_id)`；`BookRequest` 嵌套 `author: AuthorRequest`（`@NotNull @Valid`）。三个接口 curl 端到端全部通过（POST 5 条 + GET 5 条）。`GlobalExceptionHandler` 新增 `MissingServletRequestParameterException` handler → `400 · 9001`，`data` 为 `{参数名: "is required."}`。
+  踩坑：`@RequestParam` 读路径变量（应为 `@PathVariable`）；`@GetMapping("?category=...")` 里写查询串 → 405；`@NotBlank` 标在对象字段上 → 运行时 `UnexpectedTypeException`；改完 Java 代码没重启应用，以为没修好。
+
+  **收尾（2026-10-05）**：列表接口的 `"author": null` 用 `BookVO` 上的 `@JsonInclude(NON_NULL)` 去掉；`BookServiceTest`（Mockito，3 条：重复书、并发撞 `DuplicateKeyException`、正常建书设置 `authorId`）；ADR-004 已写（作者用中文写的，未按"之后转英文"的约定，作者自便）。`./mvnw test` **16 条全绿**。
+  Mockito 新坑：① 只写 given/then、漏了 when（没调用被测方法）→ `UnnecessaryStubbingException`；② `@InjectMocks` 按**类型**注入，Service 依赖的是 `AuthorService` 却 mock 了 `AuthorMapper` → 字段为 null；③ `void` 方法不能放进 `when(...)`，要用 `doThrow(...).when(mock).method(...)`。
+
+  **还欠两件事（作者 2026-10-06 自己收尾）**：① ADR-004 补全：2.2 的备选方案、4.1/4.2 的理由、3.3 的更正（判重依据是 `name + author_id`，不是作者名）、新增第 5 节"代价与后果"；可选：把 `findOrCreate` 的锁定读决策补进 ADR-003。② 提交并推送 `feat/m1-3-book-author`，代码和 CLAUDE.md 都还没提交。之后进入 M1-4（`tbl_rel_userbook` 与书摘）。
+
+  **review 记录（BookMapper.xml，共同特征：编译通过、启动不报错、结果是错的）**：
+  ① `queryById` 写了 `resultType="Book"` 而不是 `resultMap="bookWithAuthorMap"` → resultMap 定义了却没人用；列被别名成 `book_id`/`book_name`，自动映射对不上 `id`/`name`，`author` 永远是 null，返回的是一个 id 和 name 都为空的 Book。**定义 ≠ 引用**
+  ② `queryByCategory` 写了 `resultType="arraylist"` → 这里要写的是**集合里元素**的类型（`Book`），不是集合本身；MyBatis 会按 `List` 返回值自己装集合
+  ③ `LEFT JOIN` 对 `author_id NOT NULL` + 外键的关系可以是 `INNER JOIN`；LEFT 会在数据异常时静默返回 author=null 而不是暴露问题（可选）
+
+  **review 2 记录（2026-09-29，Book 三层初版；共同特征：测试全绿，但被测的根本不是出问题的代码）**：
+  ① `insertBookRecord` 只 `book.setAuthor(author)`，没 `setAuthorId(...)`，而 `insert` 的 SQL 读的是 `#{authorId}` → 插入 `author_id = null` → 撞 NOT NULL → 500。**对象图里有关联 ≠ 外键列有值**：MyBatis insert 只认 SQL 里写的那个属性
+  ② `insertBookRecord` 没加 `@Transactional` —— 这是本节课的主角。没有它，作者插成功、书插失败时，库里会留下一个没有书的作者（①恰好就会触发这个场景）
+  ③ `queryByKey` 的 SQL：`LEFT JOIN tbl_author ON b.author_id = a.id` 里别名 `a` 没定义 → 运行时 SQL 语法错误 → 500；另外 join 后 `SELECT *` 两张表都有 `id`、`name`，映射到 `Book` 时拿到哪个不确定。**XML 里的 SQL 编译期不检查，只有跑到才知道**
+  ④ `BookVO.author` 的类型是 `Author` 实体 —— VO 里嵌了 Entity，实体将来加字段会直接漏到 API 里，应改为 `AuthorVO`；`authorId` 与 `author.id` 重复
+  ⑤ `findOrCreate` 撞车分支用 `log.error` + 打印堆栈 —— 撞车是**已被处理的预期路径**，不是故障；用 `warn`/`info`、不带堆栈更合适（否则告警系统会为正常情况报警）
+  ⑥ `BookRequest` 书名 `@Size(min = 2)` 会拒掉一个字的书名，比如巴金的《家》
+  ⑦ `BookMapperTest` 新用例里 `setAuthorId(UUID.randomUUID())` 随后又被覆盖，是死代码（从旧用例复制来的）
+
+  **review 2 的两个待决问题（偏离了已定契约，需要作者决定，决定后可能要进 ADR-004）**：
+  - **"重复的书"返回 409 · `BOOK_EXISTED`** 是新决策，之前没讨论过：什么算"同一本书"（书名 + 作者？不同出版社的同名书呢？）；`tbl_book` 上没有对应的 UNIQUE 约束，所以这又是一个 check-then-insert 竞态，和 #7/#8 同病；而且 `2001` 原本留给 `BOOK_NOT_FOUND`（message 还有拼写 `confllict`）
+  - **`BookRequest` 把作者平铺成 `author` + `nationality` 两个字符串**，偏离了 09-24 决策④（嵌套 `author: AuthorRequest`），而且去掉了 `birthday` —— 新建作者的生日永远为 null，和需求澄清单"作者生日不详 —— 允许为空"（言下之意是知道时可以填）不一致
 
 **学什么**：
 - Spring **IOC/DI 原理** —— 为什么 `@Autowired` 能工作；字段注入 vs 构造器注入（工业界为什么偏爱后者）
@@ -119,7 +175,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Bean Validation** 参数校验（✅ M1-2 已完成）
 - MyBatis **动态 SQL** 与 **association/collection 关联映射**（book join author —— 地图功能的前置）
 - **`@Transactional`** 事务传播行为与失效场景
-- **JUnit + Mockito** 单元测试（区别于现有的集成测试）
+- **JUnit + Mockito** 单元测试（区别于现有的集成测试）（✅ M1-3a 已完成，`AuthorServiceTest` 是范例）
 
 **面试会怎么问**：Spring 循环依赖怎么解决、`@Transactional` 什么情况下失效、Bean 生命周期、DispatcherServlet 流程。
 
@@ -232,6 +288,8 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 
 **拦截的方式（这一条比清单本身更重要）**：不要甩一句"去写个文档"。Claude 要把模板里的问题**一条条问出来**，作者口头回答，Claude 挑刺，确认后再由作者整理成文件。作者的卡点是"开头第一句写什么"，逐条提问就是为了绕开它。
 
+**ADR 要边讨论边写（2026-10-05 作者要求）**：每当讨论中定下一个技术/设计决策，Claude 要**当场**提醒作者把它记进对应的 ADR 文件（没有就先建），至少写下"选了什么 + 一句理由 + 一句代价"。不要等到里程碑收尾再补 —— 那时作者已经想不起当初的理由和代价（ADR-004 就是这样补出来的）。
+
 **两类文档与存放位置：**
 
 | 类型 | 什么时候写 | 放哪 |
@@ -265,6 +323,8 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 
 **已有三条决策待补写成 ADR**（项目已经做过这些决策，但目前散落在本文件的叙述里）：混合式响应协议（2026-09-01，见第 7 节）、面向多端的四条架构约束（2026-09-02，见第 7 节）、UUID 主键由 Service 层生成（2026-08-04，见第 7 节）。不急，等作者把模板写熟了再回头补 —— 补的过程本身就是很好的复习。
 
+**已写的 ADR**：`001`（register/login 契约，M1-2）、`003`（author 创建语义，M1-3a）、`004`（book 接口契约，M1-3b）。**`002` 是留给 M1-2 那两条子决策的空号**（校验失败响应体的形状、`ErrorCode` 按业务域分段），别以为是丢了。ADR-003 目前还欠三样：建书流程走 `findOrCreate` 的那半个决策、第 5 节"为什么接受暴露作者存在"（作者是公开数据，与 login 故意不区分用户枚举形成对照）、以及"什么时候推翻它"（M5 批量同步遇 409 会中断整批）。
+
 **这个项目教不到的需求 / 架构能力**（诚实标准同第 3 节末尾那张表）：容量估算（QPS / 存储 / 带宽）、可用性设计（降级 / 熔断 / 超时重试）、成本约束下的取舍、多团队并行开发的边界划分。建议 M5 之后做一次**纯纸面**的"假设有 100 万用户"推演，Claude 陪着算，**一行代码都不改** —— 硬往单机项目里塞分布式组件就是自欺欺人。
 
 ## 6. 技术栈
@@ -278,7 +338,7 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 | Validation | Bean Validation (`spring-boot-starter-validation` → Hibernate Validator 8) | Declarative rules on DTOs, triggered by `@Valid` on controller parameters. Added in M1-2 |
 | 测试数据库 | H2 内存库（`MODE=MySQL`） | 仅 test scope，复用同一份 `schema.sql` |
 | 简化代码 | Lombok 1.18.30（`@Data`） | |
-| 测试 | JUnit 5 + Spring Test + TestRestTemplate + AssertJ | |
+| 测试 | JUnit 5 + Spring Test + TestRestTemplate + AssertJ + **Mockito** | Mockito 随 `spring-boot-starter-test` 一起进来，无需额外依赖。两层分工：Mapper 层测 SQL 与数据库约束（H2 真库），Service 层测业务分支（`@Mock` 掉 Mapper，不启动 Spring） |
 | 构建 | Maven（自带 `mvnw` wrapper） | |
 
 **尚未引入，且各自对应一个里程碑**：Spring Security / JWT（M2）、前端框架 + 地图库（M3）、AI SDK + 向量检索（M4）、Docker / Redis / Flyway / GitHub Actions（M5）。引入时按第 4 节先讲清它解决什么问题。
@@ -294,15 +354,17 @@ Review 的方式：**指出问题在哪、为什么是问题、有哪些修法**
 ```
 com.book.store
 ├── KittyBookStoreApplication   启动类，只剩 main 方法
-├── controller/                 HelloController、UserController
-├── service/                    UserService
-├── entity/                     User、Book（@Data 贫血模型，只给 Mapper 用）
-├── mapper/                     UserMapper、BookMapper
+├── controller/                 HelloController、UserController、AuthorController、BookController
+├── service/                    UserService、AuthorService、BookService
+├── entity/                     User、Book、Author（@Data 贫血模型，只给 Mapper 用）
+├── mapper/                     UserMapper、BookMapper、AuthorMapper
 ├── common/                     Result<T> 统一响应体、ErrorCode 错误码枚举
 ├── exception/                  BizException、GlobalExceptionHandler
-├── dto/                        RegisterRequest、LoginRequest (request bodies + validation rules)
-└── vo/                         UserVO (no password/phone), LoginVO { UserVO user }
+├── dto/                        RegisterRequest、LoginRequest、AuthorRequest、BookRequest (nests AuthorRequest) (request bodies + validation rules)
+└── vo/                         UserVO (no password/phone), LoginVO { UserVO user }, AuthorVO, BookVO (nests AuthorVO; null fields omitted)
 ```
+
+**Two creation semantics on `AuthorService` (M1-3a, ADR-003)**: `createAuthor` is what `POST /api/v1/authors` calls — a duplicate is an error (`409 / 3001`). `findOrCreate` is what the book-creation flow will call — a duplicate is the normal case, so it reuses the stored row and **ignores the incoming birthday**. Do not merge them: the same "author already exists" fact means opposite things to the two callers.
 
 **Object roles (M1-2)**: DTO carries input and its validation rules; Entity is for persistence; VO shapes output. The Controller converts DTO → Entity (`RegisterRequest.toEntity`) and Entity → VO; the Service only sees Entities or plain values (`login(name, password)`). UUID generation stays in the Service, never in a DTO — the M5 WeRead sync job will create records without going through any DTO.
 
@@ -330,8 +392,8 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 | 表 | 状态 |
 |---|---|
 | `tbl_user` | ✅ 实体 + Mapper + Service + Controller 全通，UUID 主键端到端验证过 |
-| `tbl_book` | ⚠️ 实体 + Mapper 已与表结构对齐（`BookMapperTest` 通过）；仍无 Service/Controller |
-| `tbl_author` | ❌ 无代码。**地图功能的核心表**（`nationality` 字段） |
+| `tbl_book` | ✅ 实体 + Mapper + Service + Controller 全通（`POST /api/v1/books`、`GET /{id}`、`GET ?category=`），契约见 ADR-004。`UNIQUE(name, author_id)` 判重；详情接口用 MyBatis association 带出作者 |
+| `tbl_author` | ✅ 实体 + Mapper + Service + Controller 全通（`POST /api/v1/authors`），Mapper/Service 双层测试覆盖。**地图功能的核心表**（`nationality`：`CHAR(2)`，`@Pattern(^[A-Z]{2}$)` 只保证"两个大写字母"，**不保证是真实国家码** —— M3 打点前需要 ISO-3166 白名单或接受脏数据） |
 | `tbl_rel_userbook` | ❌ 无代码。用户与书的关系表：阅读状态、评分 |
 | `tbl_bookexcerpt` | ❌ 无代码。精彩书摘 |
 | `tbl_manager` | ❌ 无代码。管理员 |
@@ -355,8 +417,11 @@ Mapper 靠接口上的 `@Mapper` 注解被发现，启动类上**没有** `@Mapp
 
 设计得最好的一块，注意保持：生产跑 MySQL、测试跑 H2 内存库，**两者复用同一份 `schema.sql`**。测试类用 `@ActiveProfiles("test")` 切到 `application-test.yaml`。新增表时只改 `schema.sql` 一处，测试库自动跟上。
 
-- `BookMapperTest`：Mapper 层集成测试（H2）
+- `BookMapperTest`、`AuthorMapperTest`：Mapper 层集成测试（H2 真库，验 SQL 与数据库约束）
+- `AuthorServiceTest`、`BookServiceTest`：Service 层单元测试（Mockito，`@Mock` 掉 Mapper，**不启动 Spring**，毫秒级）
 - `KittyBookStoreApplicationTests`：随机端口 + `TestRestTemplate` 的端到端 HTTP 测试（⚠️ 依赖真实 MySQL，见第 9 节 #4）
+
+**Mapper 测试类上要加 `@Transactional`** —— 在 Spring Test 里它的含义是"测试方法结束后回滚"（跟生产代码里的含义不同）。没有它，多个方法插入同样的数据会撞 `UNIQUE(name, nationality)`，失败还取决于执行顺序。`AuthorMapperTest`、`BookMapperTest` 都已加。
 
 ## 8. 常用命令
 
@@ -395,6 +460,24 @@ curl -i http://localhost:8080/api/v1/users/<uuid>
 
 Expected error paths: invalid fields → 400 · `9001` (reasons in `data`); malformed JSON → 400 · `9002`; wrong password **or** unknown user → 401 · `1002` (identical on purpose); duplicate name → 409 · `1003`; unknown id → 404 · `1001`.
 
+Author endpoint (M1-3a):
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/authors -H 'Content-Type: application/json' -d '{"name":"Kafka","nationality":"CZ","birthday":"1883-07-03"}'   # 201; repeat it → 409 · 3001
+```
+
+`birthday` is optional (`null` allowed); `nationality` must match `^[A-Z]{2}$`, so lower case or a 3-letter code → 400 · `9001`.
+
+Book endpoints (M1-3b):
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/books -H 'Content-Type: application/json' -d '{"name":"城堡","category":"Fiction","press":"上海译文","author":{"name":"Kafka","nationality":"CZ","birthday":"1883-07-03"}}'   # 201; repeat → 409 · 2002
+curl -i http://localhost:8080/api/v1/books/<uuid>                       # 200 with nested author; unknown id → 404 · 2001
+curl -i "http://localhost:8080/api/v1/books?category=Fiction"           # 200 list (authorId only); missing or empty category → 400 · 9001
+```
+
+Type JSON with an English input method: a Chinese quotation mark inside the body gives 400 · `9002`. After changing Java code, restart `spring-boot:run` before testing.
+
 ## 9. 已知问题清单（作者的练手清单，**不要擅自修掉**）
 
 每一项都标了归属里程碑。Claude 的任务是在被问到时解释清楚"为什么是问题、怎么修"，而不是顺手改掉：
@@ -404,11 +487,14 @@ Expected error paths: invalid fields → 400 · `9001` (reasons in `data`); malf
 3. **`spring.sql.init.mode: always`** 每次启动都重跑 `schema.sql`，靠 `IF NOT EXISTS` 兜底，表结构演进后不会自动迁移 → **M5**（Flyway）
 4. **`KittyBookStoreApplicationTests` 依赖真实 MySQL** —— 没加 `@ActiveProfiles("test")`，走默认配置连 MySQL，导致 `./mvnw test` 在 MySQL 未就绪时失败 → **M1**（顺带讨论：端到端测试用真库更真实，但破坏了"测试不依赖外部环境"的性质）
 5. **`User.createAt` 是 `String`** 而列是 `TIMESTAMP`；insert 已不再写该字段（靠数据库默认值），但类型仍应改成 `LocalDateTime` → **M1**
-6. **schema 无外键约束** —— `tbl_book.author_id` 只是普通列，没有 `FOREIGN KEY` 指向 `tbl_author`，可以写入不存在的作者 id → **M1**（做 author 模块时决定加不加）
-7. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
-8. **Register has a check-then-insert race** — `UserService.register` does `queryByName`, then `insert`. Two concurrent requests with the same name can both pass the check; the second insert hits the `UNIQUE` constraint, MyBatis-Spring throws `DuplicateKeyException`, it lands in the fallback handler → **500 instead of 409**. The DB constraint is the real guard; the pre-check is only a fast path. Fix: catch `DuplicateKeyException` and map it to `USER_EXISTED`. Note that `@Transactional` alone does **not** fix this (a plain `SELECT` under REPEATABLE READ takes no lock on a row that doesn't exist yet) — good material for the M1-3 transaction lesson → **M1**
+6. **`.gitignore` 里有一条 `*.sql`** —— `schema.sql` 因为早已被跟踪所以不受影响（gitignore 管不到已跟踪的文件），但**将来任何新建的 `.sql` 都会被静默忽略**：M2 造 10 万级测试数据的脚本、M5 的 Flyway 迁移文件全是 `.sql`。症状是"本地跑得好好的，换台机器就没了"，排查很费时间 → **M2 之前改掉**（把 `*.sql` 收窄，或为 `src/main/resources/**/*.sql` 加 `!` 例外规则）
+7. **Register has a check-then-insert race** — `UserService.register` does `queryByName`, then `insert`. Two concurrent requests with the same name can both pass the check; the second insert hits the `UNIQUE` constraint, MyBatis-Spring throws `DuplicateKeyException`, it lands in the fallback handler → **500 instead of 409**. The DB constraint is the real guard; the pre-check is only a fast path. Fix: catch `DuplicateKeyException` and map it to `USER_EXISTED`. Note that `@Transactional` alone does **not** fix this (a plain `SELECT` under REPEATABLE READ takes no lock on a row that doesn't exist yet) — good material for the M1-3 transaction lesson → **M1**
 
 > 2026-08-16 已修掉并从清单移除：原 #4 包名首字母大写（已改为 `controller`/`service`）、原 #7 死代码（`DatabaseInitializer.java` 已删，启动类两个 `CommandLineRunner` 已删）。其余各项编号已相应前移。
+>
+> 2026-10-05 fixed in M1-3b and removed: former #8 (`AuthorService` check-then-insert race). `createAuthor` maps `DuplicateKeyException` to `409 · 3001`; `findOrCreate` catches it and re-reads with `SELECT ... FOR UPDATE` (a locking read sees the latest committed row, a plain read inside the transaction would only see the old snapshot). `BookService.insertBookRecord` uses the same catch → `409 · 2002`, backed by `UNIQUE(name, author_id)`. #7 (`UserService.register`) is still open.
+>
+> 2026-09-22 fixed in M1-3a and removed: former #6 (no foreign key — `tbl_book.author_id` now has `fk_book_author ... ON DELETE RESTRICT`; adding it immediately broke `BookMapperTest`, which had been writing books with a non-existent author all along). Remaining items renumbered; the new #8 was introduced by this milestone.
 >
 > 2026-09-15 fixed in M1-2 and removed: former #3 (DTO/VO layering + `Result<T>`; register/login now return the user id, so `GET /api/v1/users/{id}` is reachable) and former #4 (inconsistent request styles — both endpoints now take JSON bodies). Remaining items renumbered.
 

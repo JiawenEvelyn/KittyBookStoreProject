@@ -54,3 +54,42 @@ Entity 用于服务处理业务逻辑、DB读写时使用的数据对象
 泛型类型推断
 在方法返回类型前面用<T\>表示声明一个泛型类型；然后通过入参传入<T>数据，java会在调用的时候，
 根据入参的实际类型来推断出<T\>的类型。
+
+
+2026-09-19
+日常git命令行列表：
+git status  查看当前所在分支和提交情况
+git swtich -c feat/xxx 新建分支并开始编码，switch是新版checkout
+#.. coding ..
+git diff 提交前确认自己改了什么
+git add <具体文件路径> 挑出要提交的文件
+git commit -m "feat: xxx" 提交
+git push -u origin feat/xxx 推到远端
+
+在结束了一个编码阶段后，回合到main中
+git switch main
+git pull
+git merge --no-ff feat/xxx -m "Merge xxx"
+git push
+git branch -c feat/xxx
+
+2026-09-22
+@Mock和@InjectMocks的区别
+@Mock
+用于被测试对象的依赖上，是开发者在测试环节中可以控制的对象
+
+@InjectMocks
+用于被测试对象，比如service类，Mockito会真正new出一个service对象，内部的代码逻辑真的会
+被执行到；
+Inject的含义，service创造出来后，被@Mock的替身会塞进它的authorMapper字段
+
+2026-09-29
+1、对于事务内读操作的理解
+@Transactional的作用是，当多条SQL执行时，它们要么全部执行成功、要么全部失败，从而避免残留脏数据。
+而一个事务中的读操作，返回的是第一次select读时的快照数据，而不是真实的最新读结果；如果事务A执行期间有另一个事务B提交了数据，
+事务A中再次进行读，无法得到事务B的提交结果。
+
+
+2026-10-03 
+在Controller中对入参请求对象家@Valid校验时，不会对嵌套对象生效，因此需要在请求里的嵌套类单独加上@Valid
+

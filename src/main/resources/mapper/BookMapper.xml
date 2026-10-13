@@ -3,7 +3,22 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.book.store.mapper.BookMapper">
+    <resultMap id="bookWithAuthorMap" type="com.book.store.entity.Book">
+        <id property="id" column="book_id"/>
+        <result property="name" column="book_name"/>
+        <result property="category" column="category"/>
+        <result property="press" column="press"/>
+        <result property="introduction" column="introduction"/>
+        <result property="authorId" column="author_id"/>
 
+        <association property="author" javaType="com.book.store.entity.Author">
+            <id  property="id" column="author_id"/>
+            <result property="name" column="author_name"/>
+            <result property="birthday" column="birthday"/>
+            <result property="nationality" column="nationality"/>
+        </association>
+    </resultMap>
+    
     <!-- 查询书籍信息 -->
     <select id="query"  resultType="com.book.store.entity.Book">
         SELECT *
@@ -15,4 +30,24 @@
         INSERT INTO tbl_book (id, name, category, author_id, press, introduction)
         VALUES (#{id}, #{name}, #{category}, #{authorId}, #{press}, #{introduction})
     </insert>
+
+    <select id="queryById" resultMap="bookWithAuthorMap">
+        SELECT b.id AS book_id, b.name AS book_name, b.category, b.author_id, b.press, b.introduction,
+        a.name AS author_name, a.nationality, a.birthday
+        FROM tbl_book b
+        LEFT JOIN tbl_author a ON b.author_id = a.id
+        WHERE b.id = #{id}
+    </select>
+
+    <select id="queryByCategory" resultType="com.book.store.entity.Book">
+        SELECT *
+        FROM tbl_book WHERE category = #{category}
+    </select>
+
+    <select id="queryByKey" resultType="com.book.store.entity.Book">
+        SELECT *
+        FROM tbl_book
+        WHERE name = #{name} AND author_id = #{authorId}
+    </select>
+
 </mapper>
