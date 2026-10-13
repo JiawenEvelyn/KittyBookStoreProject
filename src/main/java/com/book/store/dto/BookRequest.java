@@ -5,7 +5,6 @@ import com.book.store.entity.Book;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 
@@ -37,7 +36,7 @@ public class BookRequest {
         book.setPress(bookRequest.getPress());
         book.setIntroduction(bookRequest.getIntroduction());
 
-        Author author = AuthorRequest.toEntity(bookRequest.author);
+        Author author = AuthorRequest.toEntity(bookRequest.getAuthor());
         book.setAuthor(author);
         return book;
     }

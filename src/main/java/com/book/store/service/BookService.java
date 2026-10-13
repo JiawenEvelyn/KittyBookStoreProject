@@ -18,10 +18,10 @@ import java.util.UUID;
 @Slf4j
 public class BookService {
     @Autowired
-    BookMapper bookMapper;
+    private BookMapper bookMapper;
 
     @Autowired
-    AuthorService authorService;
+    private AuthorService authorService;
 
     @Transactional
     public Book insertBookRecord(Book book) {

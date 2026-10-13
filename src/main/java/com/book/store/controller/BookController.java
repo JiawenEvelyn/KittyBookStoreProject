@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class BookController {
 
     @Autowired
-    BookService bookService;
+    private BookService bookService;
 
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping
