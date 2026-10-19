@@ -32,8 +32,10 @@ CREATE TABLE IF NOT EXISTS tbl_rel_userbook (
     user_id VARCHAR(36) NOT NULL,
     book_id VARCHAR(36) NOT NULL,
     status VARCHAR(12) NOT NULL,
-    rating integer NOT NULL,
-    created_at VARCHAR(36) NOT NULL,
+    read_count INTEGER DEFAULT 0,
+    rating INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
     PRIMARY KEY (user_id, book_id)
 );
 

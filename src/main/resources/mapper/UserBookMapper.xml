@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.book.store.mapper.UserBookMapper">
+
+    <insert id="insert" parameterType="com.book.store.entity.UserBook">
+        INSERT INTO tbl_rel_userbook (user_id, book_id, status, read_count, rating,
+        created_at, finished_at)
+        VALUES (#{userId}, #{bookId}, #{status}, #{readCount}, #{rating}, #{createdAt}, #{finishedAt})
+    </insert>
+
+    <update id="modifyStatusOrRating" parameterType="com.book.store.entity.UserBook">
+        UPDATE tbl_rel_userbook
+        <set>
+            <if test="status != null and update != ''">
+                status = #{status},
+            </if>
+            <if test="rating != null and rating != ''">
+                rating = #{rating}
+            </if>
+        </set>
+        WHERE user_id = #{userId} AND book_id = #{bookId}
+    </update>
+
+    <select id="queryByStatus" resultType="com.book.store.entity.UserBook">
+        SELECT *
+        FROM tbl_rel_userbook
+        WHERE user_id = #{userId} AND status = #{status}
+    </select>
+
+</mapper>
