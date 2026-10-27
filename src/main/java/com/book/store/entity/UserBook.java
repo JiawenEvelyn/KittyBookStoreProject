@@ -3,6 +3,8 @@ package com.book.store.entity;
 import com.book.store.common.ReadingStatus;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class UserBook {
 
@@ -16,7 +18,7 @@ public class UserBook {
 
     private Integer rating;
 
-    private String createdAt;
+    private LocalDateTime createdAt;
 
-    private String finishedAt;
+    private LocalDateTime finishedAt;
 }

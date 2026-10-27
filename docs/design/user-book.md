@@ -19,4 +19,5 @@ tbl_rel_userbook的要点：
 1、不做阅读历史，不做读书摘抄
 
 ## 4 表结构
-新增read_count, finished_at, rating为1-10的整数，created_at改为TIMESTAMP
+新增read_count, finished_at, rating为1-10的整数并允许为空，created_at改为TIMESTAMP；
+主键是(user_id, book_id)组合

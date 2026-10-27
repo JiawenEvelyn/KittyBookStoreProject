@@ -4,14 +4,10 @@ import lombok.Getter;
 
 @Getter
 public enum ReadingStatus {
-    WANT(0),
-    READING(1),
-    READ(2);
+    WANT,
+    READING,
+    READ;
 
-    private final Integer status;
-
-    ReadingStatus(Integer status) {
-        this.status = status;
-    }
+    ReadingStatus() {}
 
 }

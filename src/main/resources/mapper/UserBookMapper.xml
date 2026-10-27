@@ -6,18 +6,24 @@
 
     <insert id="insert" parameterType="com.book.store.entity.UserBook">
         INSERT INTO tbl_rel_userbook (user_id, book_id, status, read_count, rating,
-        created_at, finished_at)
-        VALUES (#{userId}, #{bookId}, #{status}, #{readCount}, #{rating}, #{createdAt}, #{finishedAt})
+        finished_at)
+        VALUES (#{userId}, #{bookId}, #{status}, #{readCount}, #{rating}, #{finishedAt})
     </insert>
 
-    <update id="modifyStatusOrRating" parameterType="com.book.store.entity.UserBook">
+    <update id="modifyRecord" parameterType="com.book.store.entity.UserBook">
         UPDATE tbl_rel_userbook
         <set>
-            <if test="status != null and update != ''">
+            <if test="status != null">
                 status = #{status},
             </if>
-            <if test="rating != null and rating != ''">
-                rating = #{rating}
+            <if test="rating != null">
+                rating = #{rating},
+            </if>
+            <if test="finishAt != null">
+                finished_at = #{finishedAt},
+            </if>
+            <if test="read_count != null">
+                read_count = #{read_count},
             </if>
         </set>
         WHERE user_id = #{userId} AND book_id = #{bookId}
@@ -28,5 +34,17 @@
         FROM tbl_rel_userbook
         WHERE user_id = #{userId} AND status = #{status}
     </select>
+
+    <select id="querySingleRecord" resultType="com.book.store.entity.UserBook">
+        SELECT *
+        FROM tbl_rel_userbook
+        WHERE user_id = #{userId} AND book_id = #{bookId}
+    </select>
+
+    <update id="clearRating" >
+        UPDATE tbl_rel_userbook
+        SET rating = NULL
+        WHERE user_id = #{userId} AND book_id = #{book_id}
+    </update>
 
 </mapper>
