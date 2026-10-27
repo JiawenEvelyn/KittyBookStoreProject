@@ -14,7 +14,7 @@ public class UserBook {
 
     private ReadingStatus status;
 
-    private Integer readCount;
+    private Integer readCount = 0;
 
     private Integer rating;
 
