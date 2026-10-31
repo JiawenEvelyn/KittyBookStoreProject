@@ -24,9 +24,9 @@ public enum ErrorCode {
 
     BOOK_NOT_FOUND(2001, "Book record not found", HttpStatus.NOT_FOUND),
     BOOK_EXISTED(2002, "Book record conflict", HttpStatus.CONFLICT),
-    USERBOOK_EXISTED(2003, "User book record confilct", HttpStatus.CONFLICT),
+    USERBOOK_EXISTED(2003, "User book record conflict", HttpStatus.CONFLICT),
     USERBOOK_NOT_FOUND(2004, "User book record not found", HttpStatus.NOT_FOUND),
-    RATING_NOT_ALLOWED(2005, "Not allowed to update rating withoud finishing reading", HttpStatus.BAD_REQUEST),
+    RATING_NOT_ALLOWED(2005, "Not allowed to update rating without finishing reading", HttpStatus.BAD_REQUEST),
 
     AUTHOR_EXISTED(3001, "Author info conflict", HttpStatus.CONFLICT),
 
