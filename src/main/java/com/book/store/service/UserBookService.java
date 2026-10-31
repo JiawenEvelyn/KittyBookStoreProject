@@ -54,15 +54,17 @@ public class UserBookService {
 
     @Transactional
     public void updateRecord(String bookId, String userId, ReadingStatus status, Integer rating) {
-        UserBook userBook = userBookMapper.querySingleRecord(bookId, userId);
+        UserBook userBook = userBookMapper.querySingleRecord(userId, bookId);
         if (userBook == null) {
             throw new BizException(ErrorCode.USERBOOK_NOT_FOUND);
         }
-        if (Objects.nonNull(rating) && !status.equals(ReadingStatus.READ)) {
-            throw new BizException(ErrorCode.RATING_NOT_ALLOWED);
-        }
         ReadingStatus oldStatus = userBook.getStatus();
         ReadingStatus newStatus = status != null ? status : oldStatus;
+
+        if (Objects.nonNull(rating) && !newStatus.equals(ReadingStatus.READ)) {
+            throw new BizException(ErrorCode.RATING_NOT_ALLOWED);
+        }
+
         userBook.setStatus(newStatus);
         if (newStatus.equals(ReadingStatus.READ)) {
             if (oldStatus != ReadingStatus.READ) {
