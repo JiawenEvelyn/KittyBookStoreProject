@@ -2,6 +2,7 @@ package com.book.store.mapper;
 
 import com.book.store.common.ReadingStatus;
 import com.book.store.entity.UserBook;
+import net.bytebuddy.asm.MemberSubstitution;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -74,6 +76,25 @@ public class UserBookMapperTest {
         userBookMapper.clearRating(userBook.getUserId(), userBook.getBookId());
         UserBook clearResult = userBookMapper.querySingleRecord(userBook.getUserId(), userBook.getBookId());
         assertNull(clearResult.getRating());
+    }
+
+    @Test
+    void testQueryStausShouldReturnOneResult() {
+        userBookMapper.insert(userBook);
+
+        UserBook userBookReading = new UserBook();
+        userBookReading.setBookId(UUID.randomUUID().toString());
+        userBookReading.setUserId(userBook.getUserId());
+        userBookReading.setRating(8);
+        userBookReading.setFinishedAt(LocalDate.of(2000, 1, 1));
+        userBookReading.setStatus(ReadingStatus.READING);
+        userBookReading.setReadCount(1);
+
+        userBookMapper.insert(userBookReading);
+
+        List<UserBook> results = userBookMapper.queryByStatus(userBook.getUserId(), ReadingStatus.READING);
+        assertEquals(1, results.size());
+        assertEquals(ReadingStatus.READING, results.get(0).getStatus());
     }
 }
 

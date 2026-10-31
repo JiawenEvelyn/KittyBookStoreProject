@@ -4,6 +4,7 @@ import com.book.store.common.ReadingStatus;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 public class UserBook {
@@ -18,7 +19,7 @@ public class UserBook {
 
     private Integer rating;
 
-    private LocalDate createdAt;
+    private LocalDateTime createdAt;
 
     private LocalDate finishedAt;
 }

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS tbl_rel_userbook (
     read_count INTEGER NOT NULL DEFAULT 0,
     rating INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    finished_at TIMESTAMP,
+    finished_at DATE,
     PRIMARY KEY (user_id, book_id)
 );
 
