@@ -15,6 +15,7 @@ public enum ErrorCode {
     // 1xxx user
     // 2xxx book
     // 3xxx author
+    // 4xxx user book
     // 9xxx general/system
     SUCCESS(0, "ok", HttpStatus.OK),
 
@@ -24,6 +25,8 @@ public enum ErrorCode {
 
     BOOK_NOT_FOUND(2001, "Book record not found", HttpStatus.NOT_FOUND),
     BOOK_EXISTED(2002, "Book record conflict", HttpStatus.CONFLICT),
+    RECORD_EXISTED(2003, "User book record confilct", HttpStatus.CONFLICT),
+    RECORD_NOT_FOUND(2004, "User book record not found", HttpStatus.NOT_FOUND),
 
     AUTHOR_EXISTED(3001, "Author info conflict", HttpStatus.CONFLICT),
 
