@@ -45,8 +45,8 @@ public class UserBookService {
         try {
             userBookMapper.insert(userBook);
         } catch (DuplicateKeyException exception) {
-            log.error("insert user book record failed! DuplicateKeyException occurred: ", exception);
-            throw new BizException(ErrorCode.RECORD_EXISTED);
+            log.warn("insert user book record failed! DuplicateKeyException occurred.");
+            throw new BizException(ErrorCode.USERBOOK_EXISTED);
         }
 
         return userBook;
@@ -56,30 +56,26 @@ public class UserBookService {
     public void updateRecord(String bookId, String userId, ReadingStatus status, Integer rating) {
         UserBook userBook = userBookMapper.querySingleRecord(bookId, userId);
         if (userBook == null) {
-            throw new BizException(ErrorCode.RECORD_NOT_FOUND);
+            throw new BizException(ErrorCode.USERBOOK_NOT_FOUND);
         }
         if (Objects.nonNull(rating) && !status.equals(ReadingStatus.READ)) {
-            throw new BizException(ErrorCode.BAD_REQUEST);
+            throw new BizException(ErrorCode.RATING_NOT_ALLOWED);
         }
-        
-        userBook.setStatus(status);
-        if (status.equals(ReadingStatus.READ)) {
-            if (userBook.getStatus() != ReadingStatus.READ) {
+        ReadingStatus oldStatus = userBook.getStatus();
+        ReadingStatus newStatus = status != null ? status : oldStatus;
+        userBook.setStatus(newStatus);
+        if (newStatus.equals(ReadingStatus.READ)) {
+            if (oldStatus != ReadingStatus.READ) {
                 userBook.setReadCount(userBook.getReadCount() + 1);
+                userBook.setFinishedAt(LocalDate.now());
             }
-            userBook.setFinishedAt(LocalDate.now());
             userBook.setRating(rating);
         }
 
-        if (status.equals(ReadingStatus.WANT)) {
-            userBookMapper.clearRating(userId, bookId);
-            return;
-        }
-
-        if (status.equals(ReadingStatus.READING) && userBook.getStatus().equals(ReadingStatus.READ)) {
-
-        }
-
         userBookMapper.modifyRecord(userBook);
+
+        if (newStatus.equals(ReadingStatus.WANT)) {
+            userBookMapper.clearRating(userId, bookId);
+        }
     }
 }
